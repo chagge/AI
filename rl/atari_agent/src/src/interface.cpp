@@ -53,6 +53,8 @@ Interface::~Interface() {
 	lastFrmInfo.clear();
 	delim.clear();
 	curFrmScreen.clear();
+	ind2Act.clear();
+	act2Ind.clear();
 }
 
 int Interface::openPipe() {
@@ -75,14 +77,18 @@ int Interface::initInPipe() {
 }
 
 void Interface::initOutPipe() {
-	inputString(infoOut,10);
+	char *garbage = inputString(infoOut,10);
+	free(garbage);
+	garbage = NULL;
 	//garbage string
 }
 
 int Interface::resetInPipe() {
 	std::string x = (toString(resetButton) + ",18\n");
 	unsigned int numWrite =  fwrite(x.c_str(), sizeof(char), x.length(), infoIn);
-	inputString(infoOut,10);	//garbage string
+	char *garbage = inputString(infoOut,10);	//garbage string
+	free(garbage);
+	garbage = NULL;
 	if(numWrite != x.length())
 		return FAIL;
 	return SUCCESS;
@@ -104,7 +110,10 @@ int Interface::writeInPipe(std::string x) {
 
 void Interface::readFromPipe() {
 	lastFrmInfo.clear();
-	lastFrmInfo.assign(inputString(infoOut,10));
+	char *str = inputString(infoOut,10);
+	lastFrmInfo.assign(str);
+	free(str);
+	str = NULL;
 	decodeInfo();
 }
 
@@ -113,9 +122,13 @@ void Interface::finalizePipe() {
 		std::string x = (toString(18) + ",18\n");
 		fwrite(x.c_str(), sizeof(char), x.length(), infoIn);
 		char *str = inputString(infoOut,10);
-		if(str[0] == 'D')
+		if(str[0] == 'D') {
+			free(str);
 			break;
+		}
+		free(str);
 	}
+	closePipes();
 }
 
 void Interface::decodeInfo() {

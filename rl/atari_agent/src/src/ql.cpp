@@ -27,6 +27,8 @@ QL::QL(Info x) {
 QL::~QL() {
 	delete[] miniBatch;
 	delete[] dExp;
+	delete interface;
+	ind2Act.clear();
 }
 
 void QL::train() {

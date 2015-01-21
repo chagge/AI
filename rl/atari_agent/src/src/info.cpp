@@ -14,6 +14,8 @@ Info::~Info() {
 	dataPath.clear();
 	pathFifoIn.clear();
 	pathFifoOut.clear();
+	ind2Act.clear();
+	act2Ind.clear();
 }
 
 void Info::parseArg(int argc, char **argv) {

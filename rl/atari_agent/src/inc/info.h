@@ -1,6 +1,6 @@
 //info.h
 #ifndef __INFO_H__
-#define __INFO_H__
+#define __INFO_H__ 1
 
 #include <string>
 #include <map>
@@ -21,6 +21,10 @@ class Info{
 		int numFrmStack;
 		int maxHistoryLen;
 		int miniBatchSize;
+		int cropH;
+		int cropW;
+		int cropL;
+		int cropT;
 
 		Info();
 		~Info();

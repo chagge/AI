@@ -1,6 +1,6 @@
 //util.h
 #ifndef __UTIL_H__
-#define __UTIL_H__
+#define __UTIL_H__ 1
 
 #define UNDEF -3
 #define FAIL 0
@@ -9,6 +9,10 @@
 #include <string>
 #include <sstream>
 #include <cstdio>
+
+
+#define ALE_HEIGHT 210
+#define ALE_WIDTH 160
 
 struct History{
 	int fiJ, reward, act, isTerm, fiJN;
@@ -19,5 +23,7 @@ inline std::string toString(int i) {std::string s;std::stringstream ss;ss<<i;ss>
 
 char *inputString(FILE*, size_t);
 
+double hex2int(char, char);
+int ntsc2gray(char, char);
 
 #endif

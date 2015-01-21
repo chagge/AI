@@ -1,6 +1,6 @@
 //interface.h
 #ifndef __INTERFACE_H__
-#define __INTERFACE_H__
+#define __INTERFACE_H__ 1
 
 #include <string>
 #include <map>
@@ -25,6 +25,10 @@ class Interface {
 		int lastEpEndFrmNum;
 		int minEpFrmGap;
 		int numFrmStack;
+		int cropH;
+		int cropW;
+		int cropL;
+		int cropT;
 		std::string delim;
 		std::string curFrmScreen;
 		std::string dataPath;
@@ -59,6 +63,7 @@ class Interface {
 		int getCurFrmCnt();
 		int getCurRew();
 		int getCurAct();
+		void preProFrmString(std::ofstream&);
 };
 
 #endif

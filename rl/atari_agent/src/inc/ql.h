@@ -1,6 +1,6 @@
 //ql.h
 #ifndef __QL_H__
-#define __QL_H__
+#define __QL_H__ 1
 
 #include "util.h"
 #include "info.h"

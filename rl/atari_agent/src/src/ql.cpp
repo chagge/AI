@@ -16,6 +16,7 @@ QL::QL(Info x) {
 	miniBatchSize = info.miniBatchSize;
 
 	interface = new Interface(info);
+	//interface->test();
 	dExp = new History[maxHistoryLen];
 	epsilonDecay = maxHistoryLen;
 	miniBatch = new int[miniBatchSize];
@@ -117,7 +118,7 @@ void QL::test() {
 	int fTime = 1;
 	//init pipes
 	initPipes();
-
+	qlLog << "Pipes Initiated!..." << std::endl;
 	while(!interface->isToEnd()) {
 		if(interface->resetVals(1) || fTime) {
 			fTime = 0;

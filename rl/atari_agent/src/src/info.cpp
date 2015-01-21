@@ -64,6 +64,10 @@ void Info::decodeStuff() {
 	ale >> numFrmReset;
 	ale >> numFrmStack;
 	ale >> maxHistoryLen;
+	ale >> cropH;
+	ale >> cropW;
+	ale >> cropL;
+	ale >> cropT;
 	int x, i=0;
 	while(ale >> x) {
 		ind2Act[i]=x;
@@ -92,6 +96,12 @@ void Info::test() {
 		std::cout << "Action: " << ind2Act[i] << " Index: " << act2Ind[ind2Act[i]] << std::endl;
 	}
 	std::cout << "Reset Button: " << resetButton << std::endl;
+	std::cout << "Num frame stack: " << numFrmStack << std::endl;
+	std::cout << "maximum history length: " << maxHistoryLen << std::endl;
+	std::cout << "crop Height: " << cropH << std::endl;
+	std::cout << "crop Width: " << cropW << std::endl;
+	std::cout << "crop Left: " << cropL << std::endl;
+	std::cout << "crop Top: " << cropT << std::endl;
 
 	std::cout << "Decoded FIFOCONFIG output: " << std::endl;
 	std::cout << "Data Path: " << dataPath << std::endl;

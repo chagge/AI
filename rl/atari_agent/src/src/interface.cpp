@@ -8,6 +8,8 @@
 #include <unistd.h>
 #include <vector>
 #include <iostream>
+#include <cmath>
+
 
 Interface::Interface(Info info) {
 	dataPath = info.dataPath;
@@ -20,6 +22,10 @@ Interface::Interface(Info info) {
 	resetButton = info.resetButton;
 	numFrmReset = info.numFrmReset;
 	numFrmStack = info.numFrmStack;
+	cropH = info.cropH;
+	cropW = info.cropW;
+	cropL = info.cropL;
+	cropT = info.cropT;
 
 	frmInfo = dataPath + "/frameInfo";
 	EpInfo = dataPath + "/epInfo";
@@ -175,10 +181,45 @@ int Interface::getCurFrameNum() {
 	return curFrmNum;
 }
 
+void Interface::preProFrmString(std::ofstream &myFrmFile) {
+	double yRatio = (1.0*(ALE_HEIGHT-cropT))/(1.0*cropH);
+	double xRatio = (1.0*(ALE_WIDTH-cropL))/(1.0*cropW);
+	for(int i = 0; i < cropH; ++i) {
+		for(int j = 0; j < cropW; ++j) {
+			int firstX = (int)(std::floor(j*xRatio));
+			int lastX = (int)(std::floor((j+1)*xRatio));
+			int firstY = (int)(std::floor(i*yRatio));
+			int lastY = (int)(std::floor((i+1)*yRatio));
+			unsigned int resColor = 0.0;
+			for(int x = firstX; x <= lastX; ++x) {
+				double xRatioInResPixel = 1.0;
+				if(x == firstX)
+					xRatioInResPixel = x + 1.0 - j*xRatio;
+				else if(x == lastX)
+					xRatioInResPixel = xRatio*(j+1)-x;
+
+				for(int y = firstY; y <= lastY; ++y) {
+					double yRatioInResPixel = 1.0;
+					if(y == firstY)
+						yRatioInResPixel = y + 1.0 - i*yRatio;
+					else if(y == lastY)
+						yRatioInResPixel = yRatio*(i+1)-y;
+					int grayscale = ntsc2gray(curFrmScreen[(y+cropT-1)*(2*ALE_WIDTH) + 2*(x+cropL)], curFrmScreen[(y+cropT-1)*(2*ALE_WIDTH) + 2*(x+cropL)+1]);
+					resColor += (xRatioInResPixel/xRatio)*(yRatioInResPixel/yRatio)*grayscale;
+				}
+			}
+			myFrmFile << resColor << " ";
+		}
+		myFrmFile << std::endl;
+	}
+
+}
+
 void Interface::saveFrameInfo() {
 	std::string path = frmInfo + toString(curFrmNum);
 	std::ofstream myFrmFile(path.c_str());
-	myFrmFile << curFrmScreen << std::endl;
+	//myFrmFile << curFrmScreen << std::endl;
+	preProFrmString(myFrmFile);
 	myFrmFile << ind2Act[curAct] << std::endl;
 	myFrmFile << curRew << std::endl;
 	myFrmFile << curIsTerm << std::endl;
@@ -207,6 +248,13 @@ void Interface::test() {
 		std::cout << "Index: " << i << " Action: " << ind2Act[i] << std::endl;
 		std::cout << "Action: " << ind2Act[i] << " Index: " << act2Ind[ind2Act[i]] << std::endl;
 	}
+
+	std::cout << "Reset Button: " << resetButton << std::endl;
+	std::cout << "Num frame stack: " << numFrmStack << std::endl;
+	std::cout << "crop Height: " << cropH << std::endl;
+	std::cout << "crop Width: " << cropW << std::endl;
+	std::cout << "crop Left: " << cropL << std::endl;
+	std::cout << "crop Top: " << cropT << std::endl;
 
 	std::cout << "GEN frame info Path: " << frmInfo << std::endl;
 	std::cout << "GEN Episode info Path: " << EpInfo << std::endl;

@@ -6,6 +6,8 @@
 #include "info.h"
 #include "interface.h"
 #include <map>
+#include <deque>
+#include <vector>
 
 class QL {
 	private:
@@ -15,11 +17,11 @@ class QL {
 		int numAction;
 		int numFrmStack;
 		std::map<int, int> ind2Act;
-		History *dExp;	//transitions
+		std::deque<History> dExp;	//transitions
+		std::deque< std::vector<int> > grayScrnHist;
 		double epsilon;
 		int epsilonDecay;
 		int maxHistoryLen;
-		int numTransSaved;
 		int virtNumTransSaved;
 		int miniBatchSize;
 		int *miniBatch;
@@ -35,6 +37,8 @@ class QL {
 		void takeAction();
 		void learnWts();
 		void test();
+		void saveGrayScrn();
+		void remFrntGrayScrn();
 };
 
 #endif

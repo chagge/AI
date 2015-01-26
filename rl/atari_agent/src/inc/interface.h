@@ -7,6 +7,7 @@
 #include <cstdio>
 #include "util.h"
 #include "info.h"
+#include <vector>
 
 class Interface {
 	private:
@@ -29,6 +30,7 @@ class Interface {
 		int cropW;
 		int cropL;
 		int cropT;
+		std::vector<int> lastFrmGrayInfo;
 		std::string delim;
 		std::string curFrmScreen;
 		std::string dataPath;
@@ -64,6 +66,7 @@ class Interface {
 		int getCurRew();
 		int getCurAct();
 		void preProFrmString(std::ofstream&);
+		std::vector<int> getGrayScrn();
 };
 
 #endif

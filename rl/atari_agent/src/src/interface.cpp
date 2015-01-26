@@ -26,6 +26,7 @@ Interface::Interface(Info info) {
 	cropW = info.cropW;
 	cropL = info.cropL;
 	cropT = info.cropT;
+	lastFrmGrayInfo.reserve(cropH*cropW);
 
 	frmInfo = dataPath + "/frameInfo";
 	EpInfo = dataPath + "/epInfo";
@@ -55,6 +56,7 @@ Interface::~Interface() {
 	curFrmScreen.clear();
 	ind2Act.clear();
 	act2Ind.clear();
+	lastFrmGrayInfo.clear();
 }
 
 int Interface::openPipe() {
@@ -222,10 +224,15 @@ void Interface::preProFrmString(std::ofstream &myFrmFile) {
 				}
 			}
 			myFrmFile << resColor << " ";
+			lastFrmGrayInfo[j+i*cropW] = resColor;
 		}
 		myFrmFile << std::endl;
 	}
 
+}
+
+std::vector<int> Interface::getGrayScrn(){
+	return lastFrmGrayInfo;
 }
 
 void Interface::saveFrameInfo() {

@@ -17,18 +17,17 @@ QL::QL(Info x) {
 
 	interface = new Interface(info);
 	//interface->test();
-	dExp = new History[maxHistoryLen];
 	epsilonDecay = maxHistoryLen;
 	miniBatch = new int[miniBatchSize];
-	numTransSaved = 0;
 	virtNumTransSaved = 0;
 }
 
 QL::~QL() {
 	delete[] miniBatch;
-	delete[] dExp;
+	dExp.clear();
 	delete interface;
 	ind2Act.clear();
+	grayScrnHist.clear();
 }
 
 void QL::train() {
@@ -55,12 +54,21 @@ void QL::initPipes() {
 	interface->initOutPipe();
 }
 
+void QL::saveGrayScrn() {
+	grayScrnHist.push_back(interface->getGrayScrn());
+}
+
+void QL::remFrntGrayScrn() {
+	grayScrnHist.pop_front();
+}
+
 void QL::initSeq() {
 	for(int i = 0; i < numFrmStack; ++i) {
 		int x = rand()%numAction;
 		interface->writeInPipe(toString(ind2Act[x]));
 		interface->readFromPipe();
 		interface->saveFrameInfo();
+		saveGrayScrn();
 	}
 }
 
@@ -69,11 +77,12 @@ void QL::takeAction() {
 	interface->writeInPipe(toString(toAct));
 	interface->readFromPipe();
 	interface->saveFrameInfo();
+	saveGrayScrn();
 }
 
 void QL::getAMiniBatch() {
 	for(int i = 0; i < miniBatchSize; ++i) {
-		miniBatch[i] = rand()%std::min(virtNumTransSaved, maxHistoryLen);
+		miniBatch[i] = rand()%(dExp.size());
 	}
 }
 
@@ -87,9 +96,12 @@ void QL::saveHistory() {
 	//history saving cufrmcnt - 1, currew, curact, curisterm, curfrmcnt
 	int cnt = interface->getCurFrmCnt();
 	History history = {cnt-1, interface->getCurRew(), interface->getCurAct(), interface->isTerminal(), cnt};
-	dExp[numTransSaved++] = history;
+	dExp.push_back(history);
+	if(dExp.size() >= (unsigned int)maxHistoryLen) {
+		dExp.pop_front();
+		remFrntGrayScrn();
+	}
 	virtNumTransSaved++;
-	numTransSaved %= maxHistoryLen;
 }
 
 int QL::chooseAction() {

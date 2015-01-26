@@ -15,6 +15,5 @@ int main(int argc, char **argv) {
 
 	QL ql(info);
 	ql.test();
-
 	return 0;
 }

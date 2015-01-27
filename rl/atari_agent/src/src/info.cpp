@@ -7,6 +7,7 @@
 
 Info::Info() {
 	//empty conrtuctor
+	lr = 0.001;
 }
 Info::~Info() {
 	aleConfig.clear();
@@ -16,6 +17,7 @@ Info::~Info() {
 	pathFifoOut.clear();
 	ind2Act.clear();
 	act2Ind.clear();
+	nnConfig.clear();
 }
 
 void Info::parseArg(int argc, char **argv) {
@@ -37,6 +39,26 @@ void Info::parseArg(int argc, char **argv) {
 		{
 			if(argc != i)
 				fifoConfig = argv[i];
+			else
+			{
+				std::cout << "invalid fifo config file: use -h, --help for usage information" << std::endl;
+				exit(EXIT_FAILURE);
+			}
+		}			
+		else if(temp == "-n" || temp == "--nn_config")
+		{
+			if(argc != i)
+				nnConfig = argv[i];
+			else
+			{
+				std::cout << "invalid fifo config file: use -h, --help for usage information" << std::endl;
+				exit(EXIT_FAILURE);
+			}
+		}			
+		else if(temp == "-l" || temp == "--learn_rate")
+		{
+			if(argc != i)
+				lr = atof(argv[i]);
 			else
 			{
 				std::cout << "invalid fifo config file: use -h, --help for usage information" << std::endl;

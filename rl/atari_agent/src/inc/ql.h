@@ -5,6 +5,7 @@
 #include "util.h"
 #include "info.h"
 #include "interface.h"
+#include "cnn3.h"
 #include <map>
 #include <deque>
 #include <vector>
@@ -25,6 +26,7 @@ class QL {
 		int virtNumTransSaved;
 		int miniBatchSize;
 		int *miniBatch;
+		CNN *cnn;
 	public:
 		QL(Info);
 		~QL();
@@ -39,6 +41,7 @@ class QL {
 		void test();
 		void saveGrayScrn();
 		void remFrntGrayScrn();
+		int getArgMaxQ();
 };
 
 #endif

@@ -14,8 +14,20 @@
 #define ALE_HEIGHT 210
 #define ALE_WIDTH 160
 
+
+#define cudaMemcpyHTD(dest, src, nBytes) cudaMemcpy(dest, src, nBytes, cudaMemcpyHostToDevice)
+#define cudaMemcpyDTH(dest, src, nBytes) cudaMemcpy(dest, src, nBytes, cudaMemcpyDeviceToHost)
+
+
+#define NBDIMS 4
+#define BLOCKSIZE 512
+
 struct History{
 	int fiJ, reward, act, isTerm, fiJN;
+};
+
+struct DIM {
+	int x, y, z, w;
 };
 
 inline int toInt(std::string s) {int i;std::stringstream(s)>>i;return i;}

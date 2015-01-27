@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include "cnn3.h"
 
 QL::QL(Info x) {
 	info = x;
@@ -16,6 +17,7 @@ QL::QL(Info x) {
 	miniBatchSize = info.miniBatchSize;
 
 	interface = new Interface(info);
+	cnn = new CNN(info.nnConfig, miniBatchSize, info.lr, info.dataPath);
 	//interface->test();
 	epsilonDecay = maxHistoryLen;
 	miniBatch = new int[miniBatchSize];
@@ -87,9 +89,33 @@ void QL::getAMiniBatch() {
 }
 
 void QL::learnWts() {
+	int mapSize = grayScrnHist[grayScrnHist.size()-1].size();
+	float *inputToCNN = new float[numFrmStack*mapSize*miniBatchSize];
+	memset(inputToCNN, 0, numFrmStack*mapSize*miniBatchSize*sizeof(float));
 	for(int i = 0; i < miniBatchSize; ++i) {
 		//set output yj and backpropagate
+		for(int j = dExp[miniBatch[i]].fiJN; j > (dExp[miniBatch[i]].fiJN - 4); --j) {
+			for(int k = 0; k < mapSize; ++k) {
+				inputToCNN[i*mapSize*numFrmStack + j*mapSize + k] = (1.0*grayScrnHist[j][k])/255.0;
+			}
+		}
 	}
+
+	cnn->initInputLayer(inputToCNN);
+	cnn->forwardProp();
+	float *qVals = cnn->getQVals();
+	float *err = new float[numAction*miniBatchSize];
+	memset(err, 0, numAction*miniBatchSize*sizeof(float));
+	for(int i = 0; i < miniBatchSize; ++i) {
+		err[i*numAction + dExp[miniBatch[i]].act] = dExp[miniBatch[i]].reward - qVals[i*numAction+dExp[miniBatch[i]].act];
+	}
+	cnn->initOutputErr(err);
+	cnn->backPropagate();
+	cnn->saveWeights();
+	delete[] err;
+	delete[] qVals;
+	delete[] inputToCNN;
+
 }
 
 void QL::saveHistory() {
@@ -104,6 +130,30 @@ void QL::saveHistory() {
 	virtNumTransSaved++;
 }
 
+int QL::getArgMaxQ() {
+	int mapSize = grayScrnHist[grayScrnHist.size()-1].size();
+	float *inputToCNN = new float[numFrmStack*mapSize*miniBatchSize];
+	memset(inputToCNN, 0, numFrmStack*mapSize*miniBatchSize*sizeof(float));
+	int cnt = 0;
+	for(int i = grayScrnHist.size()-1; i > (grayScrnHist.size() - 1 - numFrmStack); --i) {
+		for(int j = 0; j < mapSize; ++j) {
+			inputToCNN[j + cnt*mapSize] = (1.0*grayScrnHist[i][j])/255.0;
+		}
+		cnt++;
+	}
+	cnn->initInputLayer(inputToCNN);
+	cnn->forwardProp();
+	float *qVals = cnn->getQVals();
+	int maxQInd = 0;
+	for(int i = 0; i < numAction; ++i) {
+		if(qVals[maxQInd] < qVals[i])
+			maxQInd = i;
+	}
+	delete[] qVals;
+	delete[] inputToCNN;
+	return maxQInd;
+}
+
 int QL::chooseAction() {
 	if(interface->getCurFrmCnt() > epsilonDecay)
 		epsilon = 0.1;
@@ -114,7 +164,7 @@ int QL::chooseAction() {
 	if(rn < epsilon)
 		return ind2Act[rand()%numAction];
 	else
-		return ind2Act[rand()%numAction];	//this has to be replaced with predicted action // argmaxQ
+		return ind2Act[getArgMaxQ()];	//this has to be replaced with predicted action // argmaxQ
 }
 
 void QL::test() {
@@ -150,7 +200,8 @@ void QL::test() {
 			qlLog << miniBatch[i] << ", ";
 		}
 		qlLog << std::endl;
-		learnWts();
+		if(virtNumTransSaved > 100)
+			learnWts();
 	}
 	interface->finalizePipe();
 	qlLog << "QL Testing END!..." << std::endl;

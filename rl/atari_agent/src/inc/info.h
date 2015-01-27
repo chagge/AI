@@ -10,6 +10,7 @@ class Info{
 		int numAction;
 		std::string aleConfig;	//input
 		std::string fifoConfig;	//input
+		std::string nnConfig;	//input
 		std::string dataPath;
 		std::string pathFifoIn;
 		std::string pathFifoOut;
@@ -25,7 +26,7 @@ class Info{
 		int cropW;
 		int cropL;
 		int cropT;
-
+		float lr;
 		Info();
 		~Info();
 		void parseArg(int, char**);

@@ -24,12 +24,12 @@ __global__ void activate(float *d, int n) {
 	d[idx] = log1pf(exp(d[idx]));
 }
 
-__global__ void calcDiffErr(float *d, float *d_, int n) {
+__global__ void calcDiffErr(float *d, int n) {
 	int idx = threadIdx.x + blockDim.x*blockIdx.x;
 	if(idx>=n)
 		return;
-	float t = d_[idx];
-	d[idx] = d[idx]*((exp(t)-1)/(exp(t)));
+	float t = d[idx];
+	d[idx] = t*(exp(t)/(1+exp(t)));
 }
 
 __global__ void updateWeights(float *d_f, float *d_ferr, float *d_msq, int n, float alpha) {
@@ -296,8 +296,8 @@ class CNN {
 				
 				prevNNUnits += curLayerUnits;
 				prevFltrUnits += fltrLayerDim[i].x*fltrLayerDim[i].y*fltrLayerDim[i].z*fltrLayerDim[i].w;
-				/*RELU not working on gpu
-				status = cudnnActivationForward(handle,
+				//RELU not working on gpu
+				cudnnActivationForward(handle,
 									   CUDNN_ACTIVATION_RELU, 
 									   &alpha,
 									   tensorDesc[i+1],
@@ -305,11 +305,11 @@ class CNN {
 									   &beta, 
 									   tensorDesc[i+1], 
 									   d_nn+prevNNUnits);
-				*/
+				
 				
 				//activation function applied element wise
-        		dim3 numBlocks((nxtLayerUnits-1)/threadsPerBlock.x + 1);
-        		activate<<<numBlocks, threadsPerBlock>>>(d_nn+prevNNUnits, nxtLayerUnits);
+        		//dim3 numBlocks((nxtLayerUnits-1)/threadsPerBlock.x + 1);
+        		//activate<<<numBlocks, threadsPerBlock>>>(d_nn+prevNNUnits, nxtLayerUnits);
 			}
 		}
 
@@ -333,8 +333,20 @@ class CNN {
         		dim3 numBlocks((curNNLayerUnits-1)/threadsPerBlock.x + 1);
 
         		//calculate differential error
-				calcDiffErr<<<numBlocks, threadsPerBlock>>>(d_nnerr+prevNNUnits, d_nn+prevNNUnits, curNNLayerUnits);
-				
+				//calcDiffErr<<<numBlocks, threadsPerBlock>>>(d_nnerr+prevNNUnits, curNNLayerUnits);
+				cudnnActivationBackward(handle,
+										CUDNN_ACTIVATION_RELU,
+										&alpha,
+										tensorDesc[i],
+										d_nn + prevNNUnits,
+										tensorDesc[i],
+										d_nnerr + prevNNUnits,
+										tensorDesc[i],
+										d_nn + prevNNUnits,
+										&beta,
+										tensorDesc[i],
+										d_nnerr+prevNNUnits
+										);
 				cudnnConvolutionBackwardFilter(handle,
 												&alpha,
 												tensorDesc[i-1],
@@ -481,7 +493,7 @@ class CNN {
 };
 
 int main() {
-CNN cnn("nnconfig", 32, 0.001);
+CNN cnn("nnconfig", 32, 0.3);
 cnn.test();
 
 return 0;

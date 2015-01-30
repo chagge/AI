@@ -65,7 +65,7 @@ class Interface {
 		int getCurFrmCnt();
 		int getCurRew();
 		int getCurAct();
-		void preProFrmString(std::ofstream&);
+		void preProFrmString();
 		std::vector<int> getGrayScrn();
 };
 

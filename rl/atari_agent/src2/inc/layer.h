@@ -2,7 +2,7 @@
 #ifndef __LAYER_H__
 #define __LAYER_H__
 
-#define value_type float
+#include "util.h"
 
 class Layer {
 	public:
@@ -25,6 +25,7 @@ class Layer {
 		void resetMsq();
 		void resetGrad();
 		void update(value_type, value_type, int);
+		void copyDataDTH();
 };
 
 #endif

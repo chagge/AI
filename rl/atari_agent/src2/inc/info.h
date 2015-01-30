@@ -27,6 +27,8 @@ class Info{
 		int cropL;
 		int cropT;
 		float lr;
+		float gamma;
+		float gammaQ;
 		Info();
 		~Info();
 		void parseArg(int, char**);

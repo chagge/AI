@@ -1,6 +1,7 @@
 //layer.cu
 #include "util.h" //norm rand cudamemcpyhtd checkcudaerrors
 #include "layer.h"
+#include <cmath>
 
 __global__ void updateFilter(value_type *d_in, value_type *grad, value_type *msq, value_type alpha, value_type gamma, int n, int batchSize) {
 	int idx = threadIdx.x + blockIdx.x*blockDim.x;
@@ -34,7 +35,7 @@ void Layer::randInit(value_type **h_dt, value_type **d_dt, int size, value_type 
 	*h_dt = new value_type[size];
 	checkCudaErrors(cudaMalloc(d_dt, sizeInBytes));
 	for(int i = 0; i < size; ++i) {
-		(*h_dt)[i] = value_type(rand_normal(0, irange));
+		(*h_dt)[i] = std::abs(value_type(rand_normal(0, irange)));
 	}
 	checkCudaErrors(cudaMemcpyHTD(*d_dt, *h_dt, sizeInBytes));
 }
@@ -83,4 +84,9 @@ void Layer::update(value_type alpha, value_type gamma, int batchSize) {
 	dim3 threadsPerBlock(BLOCKSIZE);
 	dim3 numBlocks((size-1)/threadsPerBlock.x + 1);
 	updateFilter<<<numBlocks, threadsPerBlock>>>(d_data, d_grad, d_msq, alpha, gamma, size, batchSize);
+}
+
+void Layer::copyDataDTH() {
+	int size = inputs*outputs*kernelDim*kernelDim;
+	checkCudaErrors(cudaMemcpyDTH(h_data, d_data, size*sizeof(value_type)));
 }

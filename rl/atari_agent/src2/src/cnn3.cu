@@ -9,7 +9,7 @@
 #include "cnn3.h"
 
 
-CNN::CNN(std::string x, float z, float gamma_) {
+CNN::CNN(std::string x, float z, float gamma_, std::string dataPath_) {
 	std::ifstream nnConfig(x.c_str());
 	nnConfig >> numNNLayer;
 	
@@ -31,7 +31,9 @@ CNN::CNN(std::string x, float z, float gamma_) {
 	nnConfig.close();
 	learnRate = z;
 	gamma = gamma_;
+	dataPath = dataPath_;
 	network = new Network();
+	saveFltrCntr = 0;
 
 	d_nn = NULL;
 	#ifdef TEST
@@ -114,11 +116,11 @@ void CNN::forwardProp(value_type *h_inpLayer) {
 	int inputSize = n*c*h*w;
 	assert(inputSize == firstNNLayerUnits);
 	checkCudaErrors(cudaMalloc(&srcData, inputSize*sizeof(value_type)));
-		checkCudaErrors(cudaMemcpyHTD(srcData, h_inpLayer, inputSize*sizeof(value_type)));
-		//copy to d_nn
-		checkCudaErrors(cudaMemcpyHTD(d_nn, h_inpLayer, inputSize*sizeof(value_type)));
+	checkCudaErrors(cudaMemcpyHTD(srcData, h_inpLayer, inputSize*sizeof(value_type)));
+	//copy to d_nn
+	checkCudaErrors(cudaMemcpyHTD(d_nn, h_inpLayer, inputSize*sizeof(value_type)));
 
-		int tnnu = inputSize;
+	int tnnu = inputSize;
 	for(int i = 0; i < numFltrLayer; ++i) {
 		network->convoluteForward(*fltrLyr[i], n, c, h, w, srcData, &dstData);
 		//may be some different modes and
@@ -153,29 +155,29 @@ void CNN::backwardProp(value_type *h_err) {
 	int inputSize = n*c*h*w;
 	assert(inputSize == lastNNLayerUnits);
 	checkCudaErrors(cudaMalloc(&diffData, inputSize*sizeof(value_type)));
-		checkCudaErrors(cudaMemcpyHTD(diffData, h_err, inputSize*sizeof(value_type)));
+	checkCudaErrors(cudaMemcpyHTD(diffData, h_err, inputSize*sizeof(value_type)));
 
-		//reset all fltr layer gradient
-		for(int i = 0; i < numFltrLayer; ++i)
-			fltrLyr[i]->resetGrad();
+	//reset all fltr layer gradient
+	for(int i = 0; i < numFltrLayer; ++i)
+		fltrLyr[i]->resetGrad();
 
-		int tnnu = totalNNUnits - inputSize;
-		for(int i = numFltrLayer; i >= 1; --i) {
-			nI = nnLayerDim[i-1].w, cI = nnLayerDim[i-1].z, hI = nnLayerDim[i-1].x, wI = nnLayerDim[i-1].y;
-			network->activationBackward(n, c, h, w, d_nn + tnnu, diffData, d_nn + tnnu, &gradData);
-			network->convoluteBacwardFilter(*fltrLyr[i-1], nI, cI, hI, wI, d_nn + tnnu - nI*cI*hI*wI, n, c, h, w, gradData, &(fltrLyr[i-1]->d_grad));
-			if(i > 1) {
-				network->convoluteBacwardData(*fltrLyr[i-1], n, c, h, w, gradData, nI, cI, hI, wI, &diffData);
-   			tnnu -= n*c*h*w;	//here n,c,h,w <- nI, cI, hI, wI
-   			assert(n==nI && c==cI && h==hI && w==wI);
-   		}
-			
+	int tnnu = totalNNUnits - inputSize;
+	for(int i = numFltrLayer; i >= 1; --i) {
+		nI = nnLayerDim[i-1].w, cI = nnLayerDim[i-1].z, hI = nnLayerDim[i-1].x, wI = nnLayerDim[i-1].y;
+		network->activationBackward(n, c, h, w, d_nn + tnnu, diffData, d_nn + tnnu, &gradData);
+		network->convoluteBacwardFilter(*fltrLyr[i-1], nI, cI, hI, wI, d_nn + tnnu - nI*cI*hI*wI, n, c, h, w, gradData, &(fltrLyr[i-1]->d_grad));
+		if(i > 1) {
+			network->convoluteBacwardData(*fltrLyr[i-1], n, c, h, w, gradData, nI, cI, hI, wI, &diffData);
+			tnnu -= n*c*h*w;	//here n,c,h,w <- nI, cI, hI, wI
+			assert(n==nI && c==cI && h==hI && w==wI);
 		}
-		assert(tnnu == firstNNLayerUnits);
-		//update layers
-		for(int i = 0; i < numFltrLayer; ++i)
-			fltrLyr[i]->update(learnRate, gamma, miniBatchSize);
-		checkCudaErrors(cudaFree(diffData));
+		
+	}
+	assert(tnnu == firstNNLayerUnits);
+	//update layers
+	for(int i = 0; i < numFltrLayer; ++i)
+		fltrLyr[i]->update(learnRate, gamma, miniBatchSize);
+	checkCudaErrors(cudaFree(diffData));
 	checkCudaErrors(cudaFree(gradData));
 }
 
@@ -195,6 +197,10 @@ value_type* CNN::getQVals() {
 
 void CNN::resetNN() {
 	checkCudaErrors(cudaMemset(d_nn, 0, totalNNUnits*sizeof(value_type)));
+}
+
+void CNN::resetQVals() {
+	memset(qVals, 0, lastNNLayerUnits*sizeof(value_type));
 }
 
 void CNN::printGenAttr() {
@@ -301,19 +307,64 @@ void CNN::testIterate(int numIter) {
 		int j_ = rand()%nnLayerDim[numNNLayer-1].z;
 		targ[i*nnLayerDim[numNNLayer-1].z+j_] = 1.0f;
 	}
-	value_type *err = new value_type[lastNNLayerUnits];
+
 	std::cout << "Target: " << std::endl;
 	printHostVector(lastNNLayerUnits, targ);
 	for(int i = 0; i < numIter; ++i) {
-		resetNN();
-		forwardProp(testInput);
-		for(int i = 0; i < lastNNLayerUnits; ++i) {
-			err[i] = -1*(targ[i] - qVals[i]);
-		}
-		backwardProp(err);
+		step(testInput, targ);
 	}
 	printHostVector(lastNNLayerUnits, targ);
+	std::cout << "Action chosen: " << std::endl;
+	std::cout << chooseAction(testInput, nnLayerDim[numNNLayer-1].z) << std::endl;
 	delete[] targ;
-	delete[] err;
 	delete[] testInput;
+}
+
+void CNN::step(value_type *h_inpLayer, value_type *target) {
+	value_type *err = new value_type[lastNNLayerUnits];
+	resetNN();
+	resetQVals();
+	forwardProp(h_inpLayer);
+	for(int i = 0; i < lastNNLayerUnits; ++i) {
+		err[i] = -1*(target[i] - qVals[i]);
+	}
+	backwardProp(err);
+	delete[] err;
+}
+
+int CNN::chooseAction(value_type *h_inpLayer, int numAction) {
+	resetNN();
+	resetQVals();
+	forwardProp(h_inpLayer);
+	int ret = argMaxQVal(numAction);
+	resetNN();
+	return ret;
+}
+
+value_type* CNN::forwardNGetQVal(value_type *h_inpLayer) {
+	resetNN();
+	resetQVals();
+	forwardProp(h_inpLayer);
+	resetNN();
+	return getQVals();
+}
+
+void CNN::saveFilterWts() {
+	std::string path = dataPath + "/WF" + toString(saveFltrCntr);
+	std::ofstream myFile(path.c_str());
+	for(int i = 0; i < numFltrLayer; ++i)
+		fltrLyr[i]->copyDataDTH();
+	for(int i = 0; i < numFltrLayer; ++i) {
+		int size = fltrLyr[i]->inputs*fltrLyr[i]->outputs*fltrLyr[i]->kernelDim*fltrLyr[i]->kernelDim;
+		for(int j = 0; j < size; ++j) {
+			myFile << fltrLyr[i]->h_data[j] << " ";
+		}
+		myFile << std::endl;
+	}
+	myFile.close();
+	saveFltrCntr++;
+}
+
+int CNN::getInputFMSize() {
+	return nnLayerDim[0].x*nnLayerDim[0].y;
 }

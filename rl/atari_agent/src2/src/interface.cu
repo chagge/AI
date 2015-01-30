@@ -200,7 +200,7 @@ int Interface::getCurFrameNum() {
 	return curFrmNum;
 }
 
-void Interface::preProFrmString(std::ofstream &myFrmFile) {
+void Interface::preProFrmString() {
 	double yRatio = (1.0*(ALE_HEIGHT-cropT))/(1.0*cropH);
 	double xRatio = (1.0*(ALE_WIDTH-cropL))/(1.0*cropW);
 	for(int i = 0; i < cropH; ++i) {
@@ -227,10 +227,10 @@ void Interface::preProFrmString(std::ofstream &myFrmFile) {
 					resColor += (xRatioInResPixel/xRatio)*(yRatioInResPixel/yRatio)*grayscale;
 				}
 			}
-			myFrmFile << resColor << " ";
+			//myFrmFile << resColor << " ";
 			lastFrmGrayInfo[j+i*cropW] = resColor;
 		}
-		myFrmFile << std::endl;
+		//myFrmFile << std::endl;
 	}
 
 }
@@ -240,16 +240,17 @@ std::vector<int> Interface::getGrayScrn(){
 }
 
 void Interface::saveFrameInfo() {
-	std::string path = frmInfo + toString(curFrmNum);
-	std::ofstream myFrmFile(path.c_str());
+	//no need to save frame info
+	//std::string path = frmInfo + toString(curFrmNum);
+	//std::ofstream myFrmFile(path.c_str());
 	//myFrmFile << curFrmScreen << std::endl;
-	preProFrmString(myFrmFile);
-	myFrmFile << ind2Act[curAct] << std::endl;
-	myFrmFile << curRew << std::endl;
-	myFrmFile << curIsTerm << std::endl;
-	myFrmFile << curFrmNum << std::endl;
-	myFrmFile << curEpNum << std::endl;
-	myFrmFile.close();
+	preProFrmString();
+	//myFrmFile << ind2Act[curAct] << std::endl;
+	//myFrmFile << curRew << std::endl;
+	//myFrmFile << curIsTerm << std::endl;
+	//myFrmFile << curFrmNum << std::endl;
+	//myFrmFile << curEpNum << std::endl;
+	//myFrmFile.close();
 }
 
 void Interface::saveEpisodeInfo() {

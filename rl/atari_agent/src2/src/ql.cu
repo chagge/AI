@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
-//#include "cnn3.h"
+#include "cnn3.h"
 
 QL::QL(Info x) {
 	info = x;
@@ -15,9 +15,10 @@ QL::QL(Info x) {
 	numFrmStack = info.numFrmStack;
 	maxHistoryLen = info.maxHistoryLen;
 	miniBatchSize = info.miniBatchSize;
+	gammaQ = info.gammaQ;
 
 	interface = new Interface(info);
-	//cnn = new CNN(info);
+	cnn = new CNN(info.nnConfig, info.lr, info.gamma, info.dataPath);
 	//interface->test();
 	epsilonDecay = maxHistoryLen;
 	miniBatch = new int[miniBatchSize];
@@ -25,6 +26,8 @@ QL::QL(Info x) {
 	grayScrnHist = new std::vector<int>[maxHistoryLen];
 	curLastHistInd = 0;
 	numTimeLearnt = 0;
+	memThreshold = 100;
+	saveWtTimePer = 1000;
 }
 
 QL::~QL() {
@@ -36,6 +39,7 @@ QL::~QL() {
 		grayScrnHist[i].clear();
 	}
 	delete[] grayScrnHist;
+	delete cnn;
 }
 
 void QL::train() {
@@ -60,6 +64,10 @@ void QL::initPipes() {
 	interface->openPipe();
 	interface->initInPipe();
 	interface->initOutPipe();
+}
+
+void QL::initCNN() {
+	cnn->init();
 }
 
 void QL::saveGrayScrn() {
@@ -91,11 +99,12 @@ void QL::getAMiniBatch() {
 	}
 }
 
-void QL::learnWts() {/*
-	numTimeLearnt++;
-	if(virtNumTransSaved < 100)
+void QL::learnWts() {
+	
+	if(virtNumTransSaved < memThreshold)
 		return;
-	int fMapSize = grayScrnHist[1].size();
+	//PREPARE INPUT TO CNN FOR FORWARD PROP
+	int fMapSize = cnn->getInputFMSize();
 	int cnnInputSize = fMapSize * miniBatchSize * numFrmStack;
 	float *inputToCNN = new float[cnnInputSize];
 	memset(inputToCNN, 0, cnnInputSize*sizeof(float));
@@ -105,32 +114,65 @@ void QL::learnWts() {/*
 		int cnt = dExp[miniBatch[i]].fiJN;
 		while(j < numFrmStack) {
 			for(int k = 0; k < fMapSize; ++k) {
-				inputToCNN[i*fMapSize*numFrmStack + j*fMapSize + k] = (1.0*grayScrnHist[cnt][k])/255.0;
+				inputToCNN[i*fMapSize*numFrmStack + j*fMapSize + k] = (1.0*grayScrnHist[cnt][k])/255.0 -0.5;
 			}
 			j++;
 			cnt = (maxHistoryLen + cnt - 1)%maxHistoryLen;
 		}
 	}
+	//PREPARE INPUT TO CNN FOR FORWARD PROP COMPLETES HERE
+	// fiJ, reward, act, isTerm, fiJN;
+	float *qVals = cnn->forwardNGetQVal(inputToCNN);
 
-	cnn->initInputLayer(inputToCNN);
-	cnn->forwardProp();
-	float *qVals = cnn->getQVals();
-	float *err = new float[numAction*miniBatchSize];
-	memset(err, 0, numAction*miniBatchSize*sizeof(float));
-	
-	for(int i = 0; i < miniBatchSize; ++i) {
-		std::cout << qVals[i*numAction] << " " << qVals[i*numAction+1] << std::endl;
-		err[i*numAction + dExp[miniBatch[i]].act] = -dExp[miniBatch[i]].reward + qVals[i*numAction+dExp[miniBatch[i]].act];
+	//PRINT QVALS IN A FILE TO CHECK IF THEY ARE CONVERGING OR DIVERGING
+	std::ofstream qVFile("qValsFile.txt");
+	for(int i = 0; i < miniBatchSize*numAction; ++i) {
+		qVFile << qVals[i] << " ";
 	}
-	cnn->initOutputErr(err);
-	cnn->backPropagate();
-	if(numTimeLearnt%1000==0)
-		cnn->saveWeights();
+	qVFile << std::endl;
+	qVFile.close();
+	//PRINT COMPLETES HERE
+
+	//PREPARE TARGET VALUES
+	float *targ = new float[miniBatchSize*numAction];
+	memset(targ, 0, miniBatchSize*numAction*sizeof(float));
+	//target will be zero for those actions which are not performed
+	//since we dont know how well would they have done
+	for(int i = 0; i < miniBatchSize; ++i) {
+		if(!dExp[miniBatch[i]].isTerm) {
+			targ[i*numAction + dExp[miniBatch[i]].act] = dExp[miniBatch[i]].reward + gammaQ*qVals[i*numAction + dExp[miniBatch[i]].act];
+		} else {
+			targ[i*numAction + dExp[miniBatch[i]].act] = dExp[miniBatch[i]].reward;
+		}
+	}
+	//PREPARE TARGET VALUES COMPLETES HERE
+
+	//PREPARE INPUT TO CNN AGAIN
+	memset(inputToCNN, 0, cnnInputSize*sizeof(float));
+	for(int i = 0; i < miniBatchSize; ++i) {
+		//set output yj and backpropagate
+		int j = 0;
+		int cnt = dExp[miniBatch[i]].fiJ;
+		while(j < numFrmStack) {
+			for(int k = 0; k < fMapSize; ++k) {
+				inputToCNN[i*fMapSize*numFrmStack + j*fMapSize + k] = (1.0*grayScrnHist[cnt][k])/255.0 -0.5;
+			}
+			j++;
+			cnt = (maxHistoryLen + cnt - 1)%maxHistoryLen;
+		}
+	}
+	//PREPARE INPUT TO CNN AGAIN ENDS HERE
+
+	//TAKE A STEP
+	cnn->step(inputToCNN, targ);
 	
-	delete[] err;
-	delete[] qVals;
+	numTimeLearnt++;
+	if(numTimeLearnt%saveWtTimePer==0)
+		cnn->saveFilterWts();
+	
+	delete[] targ;
 	delete[] inputToCNN;
-	*/
+	
 }
 
 void QL::saveHistory() {
@@ -145,34 +187,27 @@ void QL::saveHistory() {
 }
 
 int QL::getArgMaxQ() {
-	return 0;
-	/*
-
-	int fMapSize = grayScrnHist[1].size();
+	//PREPARATION OF INPUT TO CNN
+	int fMapSize = cnn->getInputFMSize();
 	int cnnInputSize = fMapSize * miniBatchSize * numFrmStack;
 	float *inputToCNN = new float[cnnInputSize];
 	memset(inputToCNN, 0, cnnInputSize*sizeof(float));
 	int i = 0;
 	int cnt = curLastHistInd;
+	int ImgInd = 0;
 	while(i < numFrmStack) {
 		for(int j = 0; j < fMapSize; ++j) {
-			inputToCNN[j] = (1.0*grayScrnHist[cnt][j])/255.0;
+			inputToCNN[ImgInd*fMapSize*numFrmStack+i*fMapSize+j] = (1.0*grayScrnHist[cnt][j])/255.0 -0.5;
 		}
 		i++;
 		cnt = (maxHistoryLen+cnt-1)%maxHistoryLen;
 	}
-	cnn->initInputLayer(inputToCNN);
-	cnn->forwardProp();
-	float *qVals = cnn->getQVals();
-	int maxQInd = 0;
-	for(int i = 0; i < numAction; ++i) {
-		if(qVals[maxQInd] < qVals[i])
-			maxQInd = i;
-	}
-	delete[] qVals;
+	//ONLY ONE INPUT HENCE ImgInd need not be used any further
+	//PREPARATION OF INPUT TO CNN COMPLETES HERE
+
+	int maxQInd = cnn->chooseAction(inputToCNN, numAction);
 	delete[] inputToCNN;
 	return maxQInd;
-	*/
 }
 
 int QL::chooseAction() {
@@ -203,6 +238,7 @@ void QL::test() {
 	int fTime = 1;
 	//init pipes
 	initPipes();
+	initCNN();
 	qlLog << "Pipes Initiated!..." << std::endl;
 	while(!interface->isToEnd()) {
 		if(interface->resetVals(1) || fTime) {

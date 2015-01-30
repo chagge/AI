@@ -5,7 +5,7 @@
 #include "util.h"
 #include "info.h"
 #include "interface.h"
-//#include "cnn3.h"
+#include "cnn3.h"
 #include <map>
 #include <deque>
 #include <vector>
@@ -13,7 +13,6 @@
 class QL {
 	private:
 		Interface *interface;
-		//CNN cnn;
 		Info info;
 		int numAction;
 		int numFrmStack;
@@ -28,7 +27,10 @@ class QL {
 		int miniBatchSize;
 		int *miniBatch;
 		int numTimeLearnt;
-		//CNN *cnn;
+		CNN *cnn;
+		int memThreshold;
+		int saveWtTimePer;
+		float gammaQ;
 	public:
 		QL(Info);
 		~QL();
@@ -43,6 +45,7 @@ class QL {
 		void test();
 		void saveGrayScrn();
 		int getArgMaxQ();
+		void initCNN();
 };
 
 #endif

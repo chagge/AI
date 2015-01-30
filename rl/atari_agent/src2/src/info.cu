@@ -8,6 +8,8 @@
 Info::Info() {
 	//empty conrtuctor
 	lr = 0.001;
+	gamma = 0.1;
+	gammaQ = 0.5;
 }
 Info::~Info() {
 	aleConfig.clear();
@@ -61,13 +63,33 @@ void Info::parseArg(int argc, char **argv) {
 				lr = atof(argv[i]);
 			else
 			{
-				std::cout << "invalid fifo config file: use -h, --help for usage information" << std::endl;
+				std::cout << "invalid learning rate: use -h, --help for usage information" << std::endl;
 				exit(EXIT_FAILURE);
 			}
-		}				
+		}		
+		else if(temp == "-g" || temp == "--gamma")
+		{
+			if(argc != i)
+				gamma = atof(argv[i]);
+			else
+			{
+				std::cout << "invalid gamma: use -h, --help for usage information" << std::endl;
+				exit(EXIT_FAILURE);
+			}
+		}		
+		else if(temp == "-gq" || temp == "--gamma_q")
+		{
+			if(argc != i)
+				gammaQ = atof(argv[i]);
+			else
+			{
+				std::cout << "invalid gamma: use -h, --help for usage information" << std::endl;
+				exit(EXIT_FAILURE);
+			}
+		}					
 		else if(temp == "-h" || temp == "--help")
 		{
-			std::cout << "atari: Atari learning agent\n\nUsage:atari [options] [filename...]\nDescription\n\nArguments: \n-h, --help \n\t\t show this help message and exit\n-a, --ale_config <filename> \n\t\t read ale configurations from this file\n-f, --fifo_config <filename> \n\t\t read fifo config from this file" << std::endl;
+			std::cout << "atari: Atari learning agent\n\nUsage:atari [options] [filename...]\nDescription\n\nArguments: \n-h, --help \n\t\t show this help message and exit\n-a, --ale_config <filename> \n\t\t read ale configurations from this file\n-f, --fifo_config <filename> \n\t\t read fifo config from this file\n-l, --learn_rate <lr> \n\t\t cnn learn rate\n-g, --gamma <g> \n\t\t cnn rmsprop gamma\n-gq, --gamma_q <g> \n\t\t Q learner gamma(discount) for future rewards" << std::endl;
 			exit(EXIT_SUCCESS);
 		}
 		i--;

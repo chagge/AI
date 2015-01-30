@@ -5,7 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <math.h>
-
+#include <time.h>
 #define EXIT_WAIVED 0
 
 #define cudaMemcpyHTD(dest, src, nBytes) cudaMemcpy(dest, src, nBytes, cudaMemcpyHostToDevice)
@@ -13,6 +13,31 @@
 #define cudaMemcpyDTD(dest, src, nBytes) cudaMemcpy(dest, src, nBytes, cudaMemcpyDeviceToDevice)
 #define value_type float
 #define BLOCKSIZE 512
+
+double rand_normal(double mean, double stddev) {
+  static double n2 = 0.0;
+  static int n2_cached = 0;
+  if (!n2_cached) {
+    double x, y, r;
+    do {
+      x = 2.0*rand()/RAND_MAX - 1;
+      y = 2.0*rand()/RAND_MAX - 1;
+
+      r = x*x + y*y;
+    } while (r == 0.0 || r > 1.0);
+    {
+      double d = sqrt(-2.0*log(r)/r);
+      double n1 = x*d;
+      n2 = y*d;
+      double result = n1*stddev + mean;
+      n2_cached = 1;
+      return result;
+    }
+    } else {
+      n2_cached = 0;
+      return n2*stddev + mean;
+    }
+  }
 
 #define FatalError(s) {                                                \
     std::stringstream _where, _message;                                \
@@ -81,7 +106,7 @@ class Layer {
 			*h_dt = new value_type[size];
 			checkCudaErrors(cudaMalloc(d_dt, sizeInBytes));
 			for(int i = 0; i < size; ++i) {
-				(*h_dt)[i] = irange*((value_type)(rand()))/((value_type)RAND_MAX) - irange/2.0;
+				(*h_dt)[i] = value_type(rand_normal(0, irange));
 			}
 			checkCudaErrors(cudaMemcpyHTD(*d_dt, *h_dt, sizeInBytes));
 		}
@@ -137,7 +162,7 @@ void printDeviceVector(int size, value_type *d_vec) {
     value_type *vec;
     vec = new value_type[size];
     cudaDeviceSynchronize();
-    cudaMemcpy(vec, d_vec, size*sizeof(value_type), cudaMemcpyDeviceToHost);
+    checkCudaErrors(cudaMemcpyDTH(vec, d_vec, size*sizeof(value_type)));
     for (int i = 0; i < size; i++)
     {
         std::cout << vec[i] << " ";
@@ -240,8 +265,8 @@ class Network {
  
         checkCUDNN(cudnnSetConvolution2dDescriptor(convDesc,
                                                     0,0, // padding
-                                                    1,1, // stride
-                                                    conv.stride,conv.stride, // upscale
+                                                    conv.stride,conv.stride, // stride
+                                                    1,1, // upscale
                                                     CUDNN_CROSS_CORRELATION));	//OR CUDNN_CONVOLUTION
         // find dimension of convolution output
         checkCUDNN(cudnnGetConvolution2dForwardOutputDim(convDesc,
@@ -276,7 +301,7 @@ class Network {
                                                 &sizeInBytes));
         if (sizeInBytes!=0)
         {
-          checkCudaErrors( cudaMalloc(&workSpace,sizeInBytes) );
+          checkCudaErrors(cudaMalloc(&workSpace,sizeInBytes));
         }
         value_type alpha = value_type(1);
         value_type beta  = value_type(0);
@@ -296,7 +321,7 @@ class Network {
         //addBias(dstTensorDesc, conv, c, *dstData); THIS CALL TO BE UNDERSTOOD AND CHANGED
         if (sizeInBytes!=0)
         {
-          checkCudaErrors( cudaFree(workSpace) );
+          checkCudaErrors(cudaFree(workSpace));
         }
     }
     void activationForward(int n, int c, int h, int w, value_type* srcData, value_type** dstData)
@@ -317,7 +342,7 @@ class Network {
         value_type alpha = value_type(1);
         value_type beta  = value_type(0);
         checkCUDNN(cudnnActivationForward(cudnnHandle,
-                                            CUDNN_ACTIVATION_SIGMOID,
+                                            CUDNN_ACTIVATION_RELU,
                                             &alpha,
                                             srcTensorDesc,
                                             srcData,
@@ -350,8 +375,8 @@ class Network {
  
         checkCUDNN(cudnnSetConvolution2dDescriptor(convDesc,
                                                     0,0, // padding
-                                                    1,1, // stride
-                                                    conv.stride,conv.stride, // upscale
+                                                    conv.stride,conv.stride, // stride
+                                                    1,1, // upscale
                                                     CUDNN_CROSS_CORRELATION));	//OR CUDNN_CONVOLUTION
         value_type alpha = value_type(1);
         value_type beta  = value_type(0);
@@ -395,8 +420,8 @@ class Network {
  
         checkCUDNN(cudnnSetConvolution2dDescriptor(convDesc,
                                                     0,0, // padding
-                                                    1,1, // stride
-                                                    conv.stride,conv.stride, // upscale
+                                                    conv.stride,conv.stride, // stride
+                                                    1,1, // upscale
                                                     CUDNN_CROSS_CORRELATION));	//OR CUDNN_CONVOLUTION
         value_type alpha = value_type(1);
         value_type beta  = value_type(1);	//accumulate filter gradients
@@ -440,7 +465,7 @@ class Network {
         value_type alpha = value_type(1);
         value_type beta  = value_type(0);
         checkCUDNN(cudnnActivationBackward(cudnnHandle,
-        										CUDNN_ACTIVATION_SIGMOID,
+        										CUDNN_ACTIVATION_RELU,
         										&alpha,
         										srcTensorDesc,
         										srcData,
@@ -505,9 +530,7 @@ class CNN {
 			#endif
 		}
 		~CNN() {
-			for(int i = 0; i < numFltrLayer; ++i) {
-				delete fltrLyr[i];
-			}
+			
 			delete[] fltrLyr;
 			delete network;
 			delete[] nnLayerDim;
@@ -538,24 +561,24 @@ class CNN {
 
 			int inputSize = n*c*h*w;
 			checkCudaErrors(cudaMalloc(&srcData, inputSize*sizeof(value_type)));
-       		checkCudaErrors(cudaMemset(srcData, 0, inputSize*sizeof(value_type)));	//ZERO MEMSET
+      		checkCudaErrors(cudaMemset(srcData, 0, inputSize*sizeof(value_type)));	//ZERO MEMSET
 
-       		for(int i = 0; i < numFltrLayer; ++i) {
-       			network->convoluteForward(*fltrLyr[i], n, c, h, w, srcData, &dstData);
-       			nnLayerDim[i+1].w = n;
-       			nnLayerDim[i+1].z = c;
-       			nnLayerDim[i+1].x = h;
-       			nnLayerDim[i+1].y = w;
-       			network->activationForward(n, c, h, w, dstData, &srcData);
-       		}
-       		#ifdef TEST
-       			std::cout << "Resulting Weights: " << std::endl;
-       			printDeviceVector(n*c*h*w, srcData);
-       		#endif
-       		checkCudaErrors(cudaFree(srcData));
-        	checkCudaErrors(cudaFree(dstData));
-        	#ifdef TEST
-				std::cout << "CNN forwardPropToGetDim: done!" << std::endl;
+   		for(int i = 0; i < numFltrLayer; ++i) {
+   			network->convoluteForward(*fltrLyr[i], n, c, h, w, srcData, &dstData);
+   			nnLayerDim[i+1].w = n;
+   			nnLayerDim[i+1].z = c;
+   			nnLayerDim[i+1].x = h;
+   			nnLayerDim[i+1].y = w;
+   			network->activationForward(n, c, h, w, dstData, &srcData);
+   		}
+   		#ifdef TEST
+   			std::cout << "Resulting Weights: " << std::endl;
+   			printDeviceVector(n*c*h*w, srcData);
+   		#endif
+   		checkCudaErrors(cudaFree(srcData));
+    	checkCudaErrors(cudaFree(dstData));
+    	#ifdef TEST
+		std::cout << "CNN forwardPropToGetDim: done!" << std::endl;
 			#endif
 		}
 		//has to be called after dimensions are known
@@ -581,7 +604,7 @@ class CNN {
 			
 			int inputSize = n*c*h*w;
 			assert(inputSize == firstNNLayerUnits);
-			checkCudaErrors(cudaMalloc(&srcData, inputSize*sizeof(value_type)) );
+			checkCudaErrors(cudaMalloc(&srcData, inputSize*sizeof(value_type)));
        		checkCudaErrors(cudaMemcpyHTD(srcData, h_inpLayer, inputSize*sizeof(value_type)));
        		//copy to d_nn
        		checkCudaErrors(cudaMemcpyHTD(d_nn, h_inpLayer, inputSize*sizeof(value_type)));
@@ -601,7 +624,7 @@ class CNN {
 			assert(tnnu == totalNNUnits);
 			assert(n*c*h*w == lastNNLayerUnits);
 
-	        checkCudaErrors(cudaMemcpy(qVals, srcData, lastNNLayerUnits*sizeof(value_type), cudaMemcpyDeviceToHost));
+	        checkCudaErrors(cudaMemcpyDTH(qVals, srcData, lastNNLayerUnits*sizeof(value_type)));
 			
 			#ifdef TEST
 				printDeviceVector(n*c*h*w, srcData);
@@ -620,7 +643,7 @@ class CNN {
 			int nI, cI, hI, wI;
 			int inputSize = n*c*h*w;
 			assert(inputSize == lastNNLayerUnits);
-			checkCudaErrors(cudaMalloc(&diffData, inputSize*sizeof(value_type)) );
+			checkCudaErrors(cudaMalloc(&diffData, inputSize*sizeof(value_type)));
        		checkCudaErrors(cudaMemcpyHTD(diffData, h_err, inputSize*sizeof(value_type)));
 
        		//reset all fltr layer gradient
@@ -659,6 +682,10 @@ class CNN {
 
 		value_type* getQVals() {
 			return qVals;
+		}
+
+		void resetNN() {
+			checkCudaErrors(cudaMemset(d_nn, 0, totalNNUnits*sizeof(value_type)));
 		}
 
 		void printGenAttr() {
@@ -722,36 +749,71 @@ class CNN {
 			int inputSize = nnLayerDim[0].x*nnLayerDim[0].y*nnLayerDim[0].z*nnLayerDim[0].w;
 			value_type *testInput = new value_type[inputSize];
 			for(int i = 0; i < inputSize; ++i) {
-				testInput[i] = ((value_type)(rand()))/((value_type)(RAND_MAX));
+				testInput[i] = value_type(rand_normal(0, 1));
 			}
-			std::cout << "Test Input" << std::endl;
-			printHostVector(inputSize, testInput);
-			std::cout << "Filter Layers" << std::endl;
-			printAllFltrLayer();
+			#ifdef TESTP
+				std::cout << "Test Input" << std::endl;
+				printHostVector(inputSize, testInput);
+				std::cout << "Filter Layers" << std::endl;
+				printAllFltrLayer();
+			#endif
 			forwardProp(testInput);
-			std::cout << "argMaxQVal is: " << argMaxQVal(nnLayerDim[numNNLayer-1].z) << std::endl;
+			std::cout << "argMaxQVal in first image is: " << argMaxQVal(nnLayerDim[numNNLayer-1].z) << std::endl;
 
 			std::cout << "Backpropagation Started: " << std::endl;
 			value_type *err = new value_type[lastNNLayerUnits];
 			for(int i = 0; i < lastNNLayerUnits; ++i) {
 				err[i] = -qVals[i]/2.0;
 			}
-			std::cout << "Errors: " << std::endl;
-			printHostVector(lastNNLayerUnits, err);
+			#ifdef TESTP
+				std::cout << "Errors: " << std::endl;
+				printHostVector(lastNNLayerUnits, err);
+			#endif
 			backwardProp(err);
-			std::cout << "Fltr Layers gradients " << std::endl;
-			printAllFltrLayerGrad();
-			std::cout << "Fltr Layers after backpropagation" << std::endl;
-			printAllFltrLayer();
+			#ifdef TESTP
+				std::cout << "Fltr Layers gradients " << std::endl;
+				printAllFltrLayerGrad();
+				std::cout << "Fltr Layers after backpropagation" << std::endl;
+				printAllFltrLayer();
+			#endif
 			delete[] testInput;
 			delete[] err;
+		}
+
+		void testIterate(int numIter) {
+			int inputSize = nnLayerDim[0].x*nnLayerDim[0].y*nnLayerDim[0].z*nnLayerDim[0].w;
+			value_type *testInput = new value_type[inputSize];
+			for(int i = 0; i < inputSize; ++i) {
+				testInput[i] = value_type(rand_normal(0, 1));
+			}
+			value_type *targ = new value_type[lastNNLayerUnits];
+			memset(targ, 0, lastNNLayerUnits*sizeof(float));
+			for(int i = 0; i < nnLayerDim[numNNLayer-1].w; ++i) {
+				int j_ = rand()%nnLayerDim[numNNLayer-1].z;
+				targ[i*nnLayerDim[numNNLayer-1].z+j_] = 1.0f;
+			}
+			value_type *err = new value_type[lastNNLayerUnits];
+			std::cout << "Target: " << std::endl;
+			printHostVector(lastNNLayerUnits, targ);
+			for(int i = 0; i < numIter; ++i) {
+				resetNN();
+				forwardProp(testInput);
+				for(int i = 0; i < lastNNLayerUnits; ++i) {
+					err[i] = -1*(targ[i] - qVals[i]);
+				}
+				backwardProp(err);
+			}
+			printHostVector(lastNNLayerUnits, targ);
+			delete[] targ;
+			delete[] err;
+			delete[] testInput;
 		}
 };
 
 int main() {
-CNN cnn("nnConfigTest", 0.3, 0.1);
+CNN cnn("bignnConfigTest", 0.001, 0.1);
 cnn.init();
-cnn.testForwardAndBackward();
+cnn.testIterate(10);
 return 0;
 }
 

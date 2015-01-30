@@ -24,13 +24,17 @@ SRC=$(SRCPATH)/util.cu \
     $(SRCPATH)/interface.cu \
     $(SRCPATH)/info.cu \
     $(SRCPATH)/ql.cu \
-    $(SRCPATH)/cnn3.cu
+    $(SRCPATH)/cnn3.cu \
+    $(SRCPATH)/layer.cu \
+    $(SRCPATH)/network.cu
 OBJ=$(OBJPATH)/util.o \
     $(OBJPATH)/main.o \
     $(OBJPATH)/interface.o \
     $(OBJPATH)/info.o \
     $(OBJPATH)/ql.o \
-    $(OBJPATH)/cnn3.o
+    $(OBJPATH)/cnn3.o \
+    $(OBJPATH)/layer.o \
+    $(OBJPATH)/network.o
 
 INCLUDES=-I $(INCPATH) 
 

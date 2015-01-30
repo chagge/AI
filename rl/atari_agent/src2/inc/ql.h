@@ -5,7 +5,7 @@
 #include "util.h"
 #include "info.h"
 #include "interface.h"
-#include "cnn3.h"
+//#include "cnn3.h"
 #include <map>
 #include <deque>
 #include <vector>
@@ -28,7 +28,7 @@ class QL {
 		int miniBatchSize;
 		int *miniBatch;
 		int numTimeLearnt;
-		CNN *cnn;
+		//CNN *cnn;
 	public:
 		QL(Info);
 		~QL();

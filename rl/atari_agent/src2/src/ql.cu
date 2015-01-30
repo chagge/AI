@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
-#include "cnn3.h"
+//#include "cnn3.h"
 
 QL::QL(Info x) {
 	info = x;
@@ -17,7 +17,7 @@ QL::QL(Info x) {
 	miniBatchSize = info.miniBatchSize;
 
 	interface = new Interface(info);
-	cnn = new CNN(info);
+	//cnn = new CNN(info);
 	//interface->test();
 	epsilonDecay = maxHistoryLen;
 	miniBatch = new int[miniBatchSize];
@@ -91,7 +91,7 @@ void QL::getAMiniBatch() {
 	}
 }
 
-void QL::learnWts() {
+void QL::learnWts() {/*
 	numTimeLearnt++;
 	if(virtNumTransSaved < 100)
 		return;
@@ -130,6 +130,7 @@ void QL::learnWts() {
 	delete[] err;
 	delete[] qVals;
 	delete[] inputToCNN;
+	*/
 }
 
 void QL::saveHistory() {
@@ -144,6 +145,8 @@ void QL::saveHistory() {
 }
 
 int QL::getArgMaxQ() {
+	return 0;
+	/*
 
 	int fMapSize = grayScrnHist[1].size();
 	int cnnInputSize = fMapSize * miniBatchSize * numFrmStack;
@@ -169,6 +172,7 @@ int QL::getArgMaxQ() {
 	delete[] qVals;
 	delete[] inputToCNN;
 	return maxQInd;
+	*/
 }
 
 int QL::chooseAction() {
@@ -212,11 +216,6 @@ void QL::test() {
 		int cnt = interface->getCurFrmCnt();
 		qlLog << (maxHistoryLen + cnt - 1)%maxHistoryLen << ", " << interface->getCurRew() << ", " << interface->getCurAct() << ", " << interface->isTerminal() << ", " << cnt%maxHistoryLen  << std::endl;
 		getAMiniBatch();
-		qlLog << "Got miniBatch: " << std::endl;
-		for(int i = 0; i < miniBatchSize; ++i) {
-			qlLog << miniBatch[i] << ", ";
-		}
-		qlLog << grayScrnHist[1].size() << std::endl;
 		learnWts();
 	}
 	interface->finalizePipe();

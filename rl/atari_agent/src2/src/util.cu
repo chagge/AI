@@ -2,6 +2,8 @@
 #include "util.h"
 #include <cstdio>
 #include <cstdlib>
+#include <iostream>
+#include <cmath>
 
 int ntsc2rgb[] = {
 	0x000000, 0, 0x4a4a4a, 0, 0x6f6f6f, 0, 0x8e8e8e, 0,
@@ -78,4 +80,50 @@ int ntsc2gray(char c0, char c1) {
 	int g = (rgb >> 8) & 0xFF;
     int b = rgb & 0xFF;
     return int(r*0.21 + g*0.72 + b*0.07);
+}
+
+double rand_normal(double mean, double stddev) {
+	static double n2 = 0.0;
+	static int n2_cached = 0;
+	if (!n2_cached) {
+		double x, y, r;
+		do {
+			x = 2.0*rand()/RAND_MAX - 1;
+			y = 2.0*rand()/RAND_MAX - 1;
+
+			r = x*x + y*y;
+		} while (r == 0.0 || r > 1.0);
+		{
+			double d = sqrt(-2.0*log(r)/r);
+			double n1 = x*d;
+			n2 = y*d;
+			double result = n1*stddev + mean;
+			n2_cached = 1;
+			return result;
+		}
+	} else {
+		n2_cached = 0;
+		return n2*stddev + mean;
+	}
+}
+
+void printDeviceVector(int size, value_type *d_vec) {
+    value_type *vec;
+    vec = new value_type[size];
+    cudaDeviceSynchronize();
+    checkCudaErrors(cudaMemcpyDTH(vec, d_vec, size*sizeof(value_type)));
+    for (int i = 0; i < size; i++)
+    {
+        std::cout << vec[i] << " ";
+    }
+    std::cout << std::endl;
+    delete[] vec;
+}
+
+void printHostVector(int size, value_type *h_vec) {
+    for (int i = 0; i < size; i++)
+    {
+        std::cout << h_vec[i] << " ";
+    }
+    std::cout << std::endl;
 }

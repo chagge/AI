@@ -112,12 +112,13 @@ void QL::learnWts() {
 		//set output yj and backpropagate
 		int j = 0;
 		int cnt = dExp[miniBatch[i]].fiJN;
+		cnt = (maxHistoryLen + cnt - 3)%maxHistoryLen;
 		while(j < numFrmStack) {
 			for(int k = 0; k < fMapSize; ++k) {
-				inputToCNN[i*fMapSize*numFrmStack + j*fMapSize + k] = (1.0*grayScrnHist[cnt][k])/255.0 -0.5;
+				inputToCNN[i*fMapSize*numFrmStack + j*fMapSize + k] = (1.0*grayScrnHist[cnt][k]);
 			}
 			j++;
-			cnt = (maxHistoryLen + cnt - 1)%maxHistoryLen;
+			cnt = (cnt + 1)%maxHistoryLen;
 		}
 	}
 	//PREPARE INPUT TO CNN FOR FORWARD PROP COMPLETES HERE
@@ -145,6 +146,8 @@ void QL::learnWts() {
 			targ[i*numAction + dExp[miniBatch[i]].act] = dExp[miniBatch[i]].reward;
 		}
 	}
+	//printHostVector(miniBatchSize*numAction, targ);
+	//printHostVector(miniBatchSize*numAction, qVals);
 	//PREPARE TARGET VALUES COMPLETES HERE
 
 	//PREPARE INPUT TO CNN AGAIN
@@ -153,12 +156,13 @@ void QL::learnWts() {
 		//set output yj and backpropagate
 		int j = 0;
 		int cnt = dExp[miniBatch[i]].fiJ;
+		cnt = (maxHistoryLen + cnt - 3)%maxHistoryLen;
 		while(j < numFrmStack) {
 			for(int k = 0; k < fMapSize; ++k) {
-				inputToCNN[i*fMapSize*numFrmStack + j*fMapSize + k] = (1.0*grayScrnHist[cnt][k])/255.0 -0.5;
+				inputToCNN[i*fMapSize*numFrmStack + j*fMapSize + k] = (1.0*grayScrnHist[cnt][k]);
 			}
 			j++;
-			cnt = (maxHistoryLen + cnt - 1)%maxHistoryLen;
+			cnt = (cnt + 1)%maxHistoryLen;
 		}
 	}
 	//PREPARE INPUT TO CNN AGAIN ENDS HERE
@@ -217,10 +221,15 @@ int QL::chooseAction() {
 		epsilon = 1 - (1.0*interface->getCurFrmCnt())/(1.0*epsilonDecay);
 
 	double rn = (1.0*rand())/(1.0*RAND_MAX);
-	if(rn < epsilon)
+	if(rn < epsilon) {
+		std::cout << "Action: " << ind2Act[rand()%numAction] << " RANDOM" << std::endl;
 		return ind2Act[rand()%numAction];
-	else
-		return ind2Act[getArgMaxQ()];	//this has to be replaced with predicted action // argmaxQ
+	}
+	else {
+		int amQ = getArgMaxQ();
+		std::cout << "Action: " << ind2Act[amQ] << " GREEDY" << std::endl;
+		return ind2Act[amQ];
+	}
 }
 
 void QL::test() {
@@ -251,8 +260,10 @@ void QL::test() {
 		qlLog << "History Saved: " << std::endl;
 		int cnt = interface->getCurFrmCnt();
 		qlLog << (maxHistoryLen + cnt - 1)%maxHistoryLen << ", " << interface->getCurRew() << ", " << interface->getCurAct() << ", " << interface->isTerminal() << ", " << cnt%maxHistoryLen  << std::endl;
+		qlLog << "EP No. " << interface->getCurEpNum() << " WF No. " << cnn->getCurWFNum() << std::endl;
 		getAMiniBatch();
 		learnWts();
+		qlLog << "Loss: " << cnn->getCurrentLoss() << std::endl;
 	}
 	interface->finalizePipe();
 	qlLog << "QL Testing END!..." << std::endl;

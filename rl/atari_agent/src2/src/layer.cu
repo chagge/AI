@@ -35,7 +35,7 @@ void Layer::randInit(value_type **h_dt, value_type **d_dt, int size, value_type 
 	*h_dt = new value_type[size];
 	checkCudaErrors(cudaMalloc(d_dt, sizeInBytes));
 	for(int i = 0; i < size; ++i) {
-		(*h_dt)[i] = std::abs(value_type(rand_normal(0, irange)));
+		(*h_dt)[i] = value_type(rand_normal(0, irange));
 	}
 	checkCudaErrors(cudaMemcpyHTD(*d_dt, *h_dt, sizeInBytes));
 }

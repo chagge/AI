@@ -3,6 +3,24 @@
 #include "cudnn.h"
 #include "cudnn.h"
     
+__global__ void leakyReluActivateForward(value_type *d_in, value_type *d_out, int n, value_type slope) {
+  int idx = threadIdx.x + blockIdx.x*blockDim.x;
+  if(idx >= n)
+    return;
+  d_out[idx] = d_in[idx];
+  if(d_in[idx]<=0)
+    d_out[idx] *= slope;
+}
+
+__global__ void leakyReluActivateBackward(value_type *d_in, value_type *d_out, value_type *d_z, int n, value_type slope) {
+  int idx = threadIdx.x + blockIdx.x*blockDim.x;
+  if(idx >= n)
+    return;
+  d_out[idx] = d_in[idx];
+  if(d_z[idx]<=0)
+    d_out[idx] *= slope;
+}
+
 void Network::createHandles() {
 	checkCUDNN(cudnnCreate(&cudnnHandle));
 	checkCUDNN(cudnnCreateTensorDescriptor(&srcTensorDesc));
@@ -165,6 +183,12 @@ void Network::activationForward(int n, int c, int h, int w, value_type* srcData,
                                         dstTensorDesc,
                                         *dstData));    
 }
+void Network::activationForwardLeakyRELU(int n, int c, int h, int w, value_type* srcData, value_type** dstData, value_type slope) {
+  resize(n*c*h*w, dstData);
+  dim3 threadsPerBlock(BLOCKSIZE);
+  dim3 numBlocks((n*c*h*w-1)/threadsPerBlock.x + 1);
+  leakyReluActivateForward<<<numBlocks, threadsPerBlock>>>(srcData, *dstData, n*c*h*w, slope);
+}
 void Network::convoluteBacwardData(const Layer& conv,
                       int& nI, int& cI, int& hI, int& wI,
                       value_type* diffData,
@@ -291,4 +315,13 @@ void Network::activationBackward(int& n, int& c, int& h, int& w,
     										&beta,
     										dataGradTensorDesc,
     										*gradData));
+}
+
+void Network::activationBackwardLeakyRELU(int& n, int& c, int& h, int& w,
+                      value_type* srcData,
+                      value_type* diffData, value_type* dstData, value_type**gradData, value_type slope) {
+  resize(n*c*h*w, gradData);
+  dim3 threadsPerBlock(BLOCKSIZE);
+  dim3 numBlocks((n*c*h*w-1)/threadsPerBlock.x + 1);
+  leakyReluActivateBackward<<<numBlocks, threadsPerBlock>>>(diffData, *gradData, srcData, n*c*h*w, slope);
 }

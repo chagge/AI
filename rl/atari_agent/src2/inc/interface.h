@@ -67,6 +67,7 @@ class Interface {
 		int getCurAct();
 		void preProFrmString();
 		std::vector<int> getGrayScrn();
+		int getCurEpNum();
 };
 
 #endif

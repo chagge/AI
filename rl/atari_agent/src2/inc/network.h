@@ -26,6 +26,8 @@ class Network {
         void convoluteBacwardData(const Layer&, int&, int&, int&, int&, value_type*, int&, int&, int&, int&, value_type**);
         void convoluteBacwardFilter(const Layer&,int&, int&, int&, int&,value_type*,int&, int&, int&, int&, value_type*, value_type**);
         void activationBackward(int&, int&, int&, int&,value_type*,value_type*, value_type*, value_type**);
+        void activationForwardLeakyRELU(int, int, int, int, value_type*, value_type**, value_type);
+		void activationBackwardLeakyRELU(int&, int&, int&, int&,value_type*,value_type*, value_type*, value_type**, value_type);
 };
 
 #endif

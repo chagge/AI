@@ -25,6 +25,7 @@ class CNN {
 		int totalFltrUnits;
 		int saveFltrCntr;
 		std::string dataPath;
+		float loss;
 	public:
 		CNN(std::string, float, float, std::string);
 		~CNN();
@@ -52,6 +53,8 @@ class CNN {
 		void saveFilterWts();
 		value_type* forwardNGetQVal(value_type*);
 		int getInputFMSize();
+		int getCurWFNum();
+		float getCurrentLoss();
 };
 
 #endif

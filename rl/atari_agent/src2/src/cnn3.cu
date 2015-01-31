@@ -126,7 +126,7 @@ void CNN::forwardProp(value_type *h_inpLayer) {
 		//may be some different modes and
 		// no activation at some points 
 		// utility can be added here
-		network->activationForward(n, c, h, w, dstData, &srcData);
+		network->activationForwardLeakyRELU(n, c, h, w, dstData, &srcData, 0.01f);
 		//cpy to d_nn
 		assert(n*c*h*w == nnLayerDim[i+1].x*nnLayerDim[i+1].y*nnLayerDim[i+1].z*nnLayerDim[i+1].w);
 		checkCudaErrors(cudaMemcpyDTD(d_nn + tnnu, srcData, n*c*h*w*sizeof(value_type)));
@@ -164,7 +164,7 @@ void CNN::backwardProp(value_type *h_err) {
 	int tnnu = totalNNUnits - inputSize;
 	for(int i = numFltrLayer; i >= 1; --i) {
 		nI = nnLayerDim[i-1].w, cI = nnLayerDim[i-1].z, hI = nnLayerDim[i-1].x, wI = nnLayerDim[i-1].y;
-		network->activationBackward(n, c, h, w, d_nn + tnnu, diffData, d_nn + tnnu, &gradData);
+		network->activationBackwardLeakyRELU(n, c, h, w, d_nn + tnnu, diffData, d_nn + tnnu, &gradData, 0.01f);
 		network->convoluteBacwardFilter(*fltrLyr[i-1], nI, cI, hI, wI, d_nn + tnnu - nI*cI*hI*wI, n, c, h, w, gradData, &(fltrLyr[i-1]->d_grad));
 		if(i > 1) {
 			network->convoluteBacwardData(*fltrLyr[i-1], n, c, h, w, gradData, nI, cI, hI, wI, &diffData);
@@ -325,8 +325,10 @@ void CNN::step(value_type *h_inpLayer, value_type *target) {
 	resetNN();
 	resetQVals();
 	forwardProp(h_inpLayer);
+	loss = 0;
 	for(int i = 0; i < lastNNLayerUnits; ++i) {
 		err[i] = -1*(target[i] - qVals[i]);
+		loss += err[i]*err[i];
 	}
 	backwardProp(err);
 	delete[] err;
@@ -367,4 +369,12 @@ void CNN::saveFilterWts() {
 
 int CNN::getInputFMSize() {
 	return nnLayerDim[0].x*nnLayerDim[0].y;
+}
+
+int CNN::getCurWFNum() {
+	return saveFltrCntr;
+}
+
+float CNN::getCurrentLoss() {
+	return loss;
 }

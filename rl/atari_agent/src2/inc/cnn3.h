@@ -14,6 +14,8 @@ class CNN {
 		Layer **fltrLyr;
 		LayerDim *nnLayerDim;
 		float learnRate;
+		float baseLearnRate;
+		float dropFactor;
 		Network *network;
 		value_type *d_nn;
 		value_type *qVals;
@@ -26,6 +28,7 @@ class CNN {
 		int saveFltrCntr;
 		std::string dataPath;
 		float loss;
+		float prevLoss;
 	public:
 		CNN(std::string, float, float, std::string);
 		~CNN();
@@ -55,6 +58,10 @@ class CNN {
 		int getInputFMSize();
 		int getCurWFNum();
 		float getCurrentLoss();
+		void loadFltrFrmHist();
+		void copyFltrToHist();
+		void learn(value_type*, value_type*, int);
+		float getPrevLoss();
 };
 
 #endif

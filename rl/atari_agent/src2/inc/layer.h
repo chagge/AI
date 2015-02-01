@@ -6,7 +6,7 @@
 
 class Layer {
 	public:
-		value_type *h_data, *d_data;
+		value_type *h_data, *d_data, *d_hist_data;
 		value_type *h_bias, *d_bias;
 		value_type *d_msq, *d_grad;
 		int inputs;
@@ -26,6 +26,9 @@ class Layer {
 		void resetGrad();
 		void update(value_type, value_type, int);
 		void copyDataDTH();
+		void copyDataDTDH();
+		void copyDataDHTD();
+		void initHistData();
 };
 
 #endif

@@ -61,8 +61,15 @@ void Layer::initGrad() {
 	int sizeInBytes = size*sizeof(value_type);
 	checkCudaErrors(cudaMalloc(&d_grad, sizeInBytes));
 }
+void Layer::initHistData() {
+	int size = inputs*outputs*kernelDim*kernelDim;
+	checkCudaErrors(cudaMalloc(&d_hist_data, size*sizeof(value_type)));
+	checkCudaErrors(cudaMemcpyDTD(d_hist_data, d_data, size*sizeof(value_type)));
+}
+
 void Layer::init() {
 	initData();
+	initHistData();
 	initBias();
 	initMsq();
 	initGrad();
@@ -89,4 +96,14 @@ void Layer::update(value_type alpha, value_type gamma, int batchSize) {
 void Layer::copyDataDTH() {
 	int size = inputs*outputs*kernelDim*kernelDim;
 	checkCudaErrors(cudaMemcpyDTH(h_data, d_data, size*sizeof(value_type)));
+}
+
+void Layer::copyDataDTDH() {
+	int size = inputs*outputs*kernelDim*kernelDim;
+	checkCudaErrors(cudaMemcpyDTD(d_hist_data, d_data, size*sizeof(value_type)));
+}
+
+void Layer::copyDataDHTD() {
+	int size = inputs*outputs*kernelDim*kernelDim;
+	checkCudaErrors(cudaMemcpyDTD(d_data, d_hist_data, size*sizeof(value_type)));
 }

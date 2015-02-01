@@ -26,7 +26,7 @@ QL::QL(Info x) {
 	grayScrnHist = new std::vector<int>[maxHistoryLen];
 	curLastHistInd = 0;
 	numTimeLearnt = 0;
-	memThreshold = 100;
+	memThreshold = 500;
 	saveWtTimePer = 1000;
 }
 
@@ -103,6 +103,7 @@ void QL::learnWts() {
 	
 	if(virtNumTransSaved < memThreshold)
 		return;
+	//std::cout << "iteration: " << numTimeLearnt << std::endl;
 	//PREPARE INPUT TO CNN FOR FORWARD PROP
 	int fMapSize = cnn->getInputFMSize();
 	int cnnInputSize = fMapSize * miniBatchSize * numFrmStack;
@@ -115,7 +116,7 @@ void QL::learnWts() {
 		cnt = (maxHistoryLen + cnt - 3)%maxHistoryLen;
 		while(j < numFrmStack) {
 			for(int k = 0; k < fMapSize; ++k) {
-				inputToCNN[i*fMapSize*numFrmStack + j*fMapSize + k] = (1.0*grayScrnHist[cnt][k]);
+				inputToCNN[i*fMapSize*numFrmStack + j*fMapSize + k] = (1.0*grayScrnHist[cnt][k])/255.0 -0.5;
 			}
 			j++;
 			cnt = (cnt + 1)%maxHistoryLen;
@@ -133,7 +134,6 @@ void QL::learnWts() {
 	qVFile << std::endl;
 	qVFile.close();
 	//PRINT COMPLETES HERE
-
 	//PREPARE TARGET VALUES
 	float *targ = new float[miniBatchSize*numAction];
 	memset(targ, 0, miniBatchSize*numAction*sizeof(float));
@@ -146,7 +146,9 @@ void QL::learnWts() {
 			targ[i*numAction + dExp[miniBatch[i]].act] = dExp[miniBatch[i]].reward;
 		}
 	}
+	//std::cout << " Targ: " << std::endl;
 	//printHostVector(miniBatchSize*numAction, targ);
+	//std::cout << " qVals: " << std::endl;
 	//printHostVector(miniBatchSize*numAction, qVals);
 	//PREPARE TARGET VALUES COMPLETES HERE
 
@@ -159,7 +161,7 @@ void QL::learnWts() {
 		cnt = (maxHistoryLen + cnt - 3)%maxHistoryLen;
 		while(j < numFrmStack) {
 			for(int k = 0; k < fMapSize; ++k) {
-				inputToCNN[i*fMapSize*numFrmStack + j*fMapSize + k] = (1.0*grayScrnHist[cnt][k]);
+				inputToCNN[i*fMapSize*numFrmStack + j*fMapSize + k] = (1.0*grayScrnHist[cnt][k])/255.0 -0.5;
 			}
 			j++;
 			cnt = (cnt + 1)%maxHistoryLen;
@@ -168,7 +170,11 @@ void QL::learnWts() {
 	//PREPARE INPUT TO CNN AGAIN ENDS HERE
 
 	//TAKE A STEP
-	cnn->step(inputToCNN, targ);
+	int maxLIter = 20;
+	cnn->learn(inputToCNN, targ, maxLIter);
+	
+	//std::cout << "targ" << std::endl;
+	//printHostVector(miniBatchSize*numAction, targ);
 	
 	numTimeLearnt++;
 	if(numTimeLearnt%saveWtTimePer==0)
@@ -222,12 +228,12 @@ int QL::chooseAction() {
 
 	double rn = (1.0*rand())/(1.0*RAND_MAX);
 	if(rn < epsilon) {
-		std::cout << "Action: " << ind2Act[rand()%numAction] << " RANDOM" << std::endl;
+		//std::cout << "Action: " << ind2Act[rand()%numAction] << " RANDOM" << std::endl;
 		return ind2Act[rand()%numAction];
 	}
 	else {
 		int amQ = getArgMaxQ();
-		std::cout << "Action: " << ind2Act[amQ] << " GREEDY" << std::endl;
+		//std::cout << "Action: " << ind2Act[amQ] << " GREEDY" << std::endl;
 		return ind2Act[amQ];
 	}
 }

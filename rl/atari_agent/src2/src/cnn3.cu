@@ -7,7 +7,7 @@
 #include "layer.h"
 #include "network.h"
 #include "cnn3.h"
-
+#include <cmath>
 
 CNN::CNN(std::string x, float z, float gamma_, std::string dataPath_) {
 	std::ifstream nnConfig(x.c_str());
@@ -29,11 +29,12 @@ CNN::CNN(std::string x, float z, float gamma_, std::string dataPath_) {
 		fltrLyr[i] = new Layer(in, out, ker, stride, irD, irB);
 	}
 	nnConfig.close();
-	learnRate = z;
+	baseLearnRate = z;
 	gamma = gamma_;
 	dataPath = dataPath_;
 	network = new Network();
 	saveFltrCntr = 0;
+	dropFactor = 0.1f;
 
 	d_nn = NULL;
 	#ifdef TEST
@@ -310,6 +311,7 @@ void CNN::testIterate(int numIter) {
 
 	std::cout << "Target: " << std::endl;
 	printHostVector(lastNNLayerUnits, targ);
+	prevLoss = -1.0f;
 	for(int i = 0; i < numIter; ++i) {
 		step(testInput, targ);
 	}
@@ -325,13 +327,47 @@ void CNN::step(value_type *h_inpLayer, value_type *target) {
 	resetNN();
 	resetQVals();
 	forwardProp(h_inpLayer);
+	//std::cout << "qval" << std::endl;
+	//printHostVector(lastNNLayerUnits, qVals);
 	loss = 0;
 	for(int i = 0; i < lastNNLayerUnits; ++i) {
 		err[i] = -1*(target[i] - qVals[i]);
 		loss += err[i]*err[i];
 	}
-	backwardProp(err);
+	loss = (1.0/miniBatchSize)*std::sqrt(loss);
+	if(prevLoss == -1.0f || (prevLoss > loss)) {
+			prevLoss = loss;
+			copyFltrToHist();
+			backwardProp(err);
+			
+		} else {
+			learnRate = learnRate * dropFactor;
+			loadFltrFrmHist();
+		}
 	delete[] err;
+}
+
+void CNN::loadFltrFrmHist() {
+	for(int i = 0; i < numFltrLayer; ++i) {
+		fltrLyr[i]->copyDataDHTD();
+	}
+}
+void CNN::copyFltrToHist() {
+	for(int i = 0; i < numFltrLayer; ++i) {
+		fltrLyr[i]->copyDataDTDH();
+	}
+}
+
+void CNN::learn(value_type *h_inpLayer, value_type *target, int mIter) {
+	learnRate = baseLearnRate;
+	prevLoss = -1.0f;
+	std::ofstream lossFile("loss.txt");
+	for(int i = 0; i < mIter; ++i) {
+		step(h_inpLayer, target);
+		lossFile << "iter no. " << i << " loss: " << loss << " prevloss: " << prevLoss << std::endl;
+		//std::cout << "iteration No." << i << " loss:" << prevLoss << std::endl;
+	}
+	lossFile.close();
 }
 
 int CNN::chooseAction(value_type *h_inpLayer, int numAction) {
@@ -377,4 +413,8 @@ int CNN::getCurWFNum() {
 
 float CNN::getCurrentLoss() {
 	return loss;
+}
+
+float CNN::getPrevLoss() {
+	return prevLoss;
 }

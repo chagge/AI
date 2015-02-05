@@ -141,7 +141,15 @@ void QL::learnWts() {
 	//since we dont know how well would they have done
 	for(int i = 0; i < miniBatchSize; ++i) {
 		if(!dExp[miniBatch[i]].isTerm) {
-			targ[i*numAction + dExp[miniBatch[i]].act] = dExp[miniBatch[i]].reward + gammaQ*qVals[i*numAction + dExp[miniBatch[i]].act];
+			float maxQV = 0;
+			int maxQVI = 0;
+			for(int j = 0; j < numAction; ++j) {
+				if(qVals[i*numAction + j] > qVals[i*numAction + maxQVI]) {
+					maxQVI = j;
+				}
+			}
+			maxQV = qVals[i*numAction + maxQVI];	
+			targ[i*numAction + dExp[miniBatch[i]].act] = dExp[miniBatch[i]].reward + gammaQ*maxQV;
 		} else {
 			targ[i*numAction + dExp[miniBatch[i]].act] = dExp[miniBatch[i]].reward;
 		}

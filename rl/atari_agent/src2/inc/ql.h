@@ -9,6 +9,7 @@
 #include <map>
 #include <deque>
 #include <vector>
+#include <string>
 
 class QL {
 	private:
@@ -31,21 +32,38 @@ class QL {
 		int memThreshold;
 		int saveWtTimePer;
 		float gammaQ;
+		std::string qlLogFile;
+		float *inputToCNN;
+		int cnnInputSize;
+		int fMapSize;
+		bool isRandom;
+		int numInpSaved;
 	public:
-		QL(Info);
+		QL(Info x);
 		~QL();
-		void train();
-		void initPipes();
-		void getAMiniBatch();
-		void saveHistory();
-		int chooseAction();
-		void initSeq();
-		void takeAction();
-		void learnWts();
 		void test();
-		void saveGrayScrn();
+		void setInputToCNN(int lst, int imgInd);
 		int getArgMaxQ();
-		void initCNN();
+		int chooseAction(bool toTrain);
+		double repeatLastAction(int toAct, int x, bool);
+		void saveHistory(History history);
+		void prepareTarget(float *targ, float *qVals);
+		void learnWts();
+		double playAnEpisode(bool toTrain);
+		void run();
+		void getAMiniBatch();
+		void printInfo();
+		void init();
+		void printHistory(History history);
+		void finalize();
+		void printQVals(float *qVals);
+		void printInputToCNN();
+		bool gameOver();
+		int episodeOver();
+		double playAction(int x);
+		void saveGrayScrn();
+		double initSeq();
+		void resetInputToCNN();
 };
 
 #endif

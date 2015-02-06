@@ -149,14 +149,8 @@ void Interface::decodeInfo() {
 	curFrmScreen = lastFrmInfo.substr(0, v[2]+1);
 	curIsTerm = atoi(lastFrmInfo.substr(v[2]+1, v[1]-v[2]-1).c_str());
 	curRew = (atoi(lastFrmInfo.substr(v[1]+1, v[0]-v[1]-1).c_str())>0?1:0);
-	if(curRew > 0)
-		curRew = 1;
-	else if(curRew < 0)
-		curRew = -1;
 	curFrmNum += 1;
 	curEpNumFrame +=1;
-	if(curIsTerm && (curFrmNum-lastEpEndFrmNum)>minEpFrmGap)
-		curRew = 0;
 	curEpNetRew += curRew;
 	netGameRew += curRew;
 }

@@ -15,6 +15,6 @@ int main(int argc, char **argv) {
 	//interface.test();
 
 	QL ql(info);
-	ql.test();
+	ql.run();
 	return 0;
 }

@@ -9,6 +9,8 @@
 #include "cnn3.h"
 #include <cmath>
 
+#define TESTCNN
+
 CNN::CNN(std::string x, float z, float gamma_, std::string dataPath_) {
 	std::ifstream nnConfig(x.c_str());
 	nnConfig >> numNNLayer;
@@ -327,8 +329,10 @@ void CNN::step(value_type *h_inpLayer, value_type *target) {
 	resetNN();
 	resetQVals();
 	forwardProp(h_inpLayer);
-	//std::cout << "qval" << std::endl;
-	//printHostVector(lastNNLayerUnits, qVals);
+	#ifdef TESTCNN
+		std::cout << "qval" << std::endl;
+		printHostVector(lastNNLayerUnits, qVals);
+	#endif
 	loss = 0;
 	for(int i = 0; i < lastNNLayerUnits; ++i) {
 		err[i] = -1*(target[i] - qVals[i]);
@@ -359,15 +363,20 @@ void CNN::copyFltrToHist() {
 }
 
 void CNN::learn(value_type *h_inpLayer, value_type *target, int mIter) {
+	#ifdef TESTCNN
+		std::cout << "Learning Started" << std::endl;
+	#endif
 	learnRate = baseLearnRate;
 	prevLoss = -1.0f;
-	std::ofstream lossFile("loss.txt");
 	for(int i = 0; i < mIter; ++i) {
 		step(h_inpLayer, target);
-		lossFile << "iter no. " << i << " loss: " << loss << " prevloss: " << prevLoss << std::endl;
-		//std::cout << "iteration No." << i << " loss:" << prevLoss << std::endl;
+		#ifdef TESTCNN
+			std::cout << "iter no. " << i << " loss: " << loss << " prevloss: " << prevLoss << std::endl;
+		#endif
 	}
-	lossFile.close();
+	#ifdef TESTCNN
+		std::cout << "Learning Ended" << std::endl;
+	#endif
 }
 
 int CNN::chooseAction(value_type *h_inpLayer, int numAction) {

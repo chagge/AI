@@ -8,6 +8,8 @@
 #include <iostream>
 #include "cnn3.h"
 
+
+
 QL::QL(Info x) {
 	info = x;
 	numAction = info.numAction;
@@ -28,6 +30,8 @@ QL::QL(Info x) {
 	numTimeLearnt = 0;
 	memThreshold = 500;
 	saveWtTimePer = 1000;
+	qlLogFile = "qlMainLog.txt";
+	numInpSaved = 0;
 }
 
 QL::~QL() {
@@ -39,104 +43,71 @@ QL::~QL() {
 		grayScrnHist[i].clear();
 	}
 	delete[] grayScrnHist;
+	delete[] inputToCNN;
+
 	delete cnn;
 }
 
-void QL::train() {
-	int fTime = 1;
-	//init pipes
-	initPipes();
 
-	while(!interface->isToEnd()) {
-		if(interface->resetVals(1) || fTime) {
-			fTime = 0;
-			initSeq();
+void QL::test() {
+}
+
+void QL::setInputToCNN(int lst, int imgInd) {
+	int i = 0, cnt = (maxHistoryLen + lst - (numFrmStack-1))%maxHistoryLen;
+	while(i < numFrmStack) {
+		for(int j = 0; j < fMapSize; ++j) {
+			inputToCNN[imgInd*fMapSize*numFrmStack+i*fMapSize+j] = (1.0*grayScrnHist[cnt][j]);
 		}
-		takeAction();
-		saveHistory();
-		getAMiniBatch();
-		learnWts();
+		i++;
+		cnt = (cnt+1)%maxHistoryLen;
 	}
-	interface->finalizePipe();
 }
 
-void QL::initPipes() {
-	interface->openPipe();
-	interface->initInPipe();
-	interface->initOutPipe();
+int QL::getArgMaxQ() {
+	resetInputToCNN();
+	setInputToCNN(curLastHistInd-1, 0);
+	int maxQInd = cnn->chooseAction(inputToCNN, numAction);
+	return maxQInd;
 }
 
-void QL::initCNN() {
-	cnn->init();
+int QL::chooseAction(bool toTrain) {
+	if(numTimeLearnt > epsilonDecay)
+		epsilon = 0.1;
+	else
+		epsilon = 1 - (1.0*numTimeLearnt)/(1.0*epsilonDecay);
+
+	double rn = (1.0*rand())/(1.0*RAND_MAX);
+	if(rn < epsilon && toTrain) {
+		//std::cout << "Action: " << ind2Act[rand()%numAction] << " RANDOM" << std::endl;
+		isRandom = true;
+		return rand()%numAction;
+	} else {
+		int amQ = getArgMaxQ();
+		isRandom = false;
+		//std::cout << "Action: " << ind2Act[amQ] << " GREEDY" << std::endl;
+		return amQ;
+	}
 }
 
-void QL::saveGrayScrn() {
-	grayScrnHist[interface->getCurFrmCnt()%maxHistoryLen] = interface->getGrayScrn();
-	curLastHistInd = interface->getCurFrmCnt()%maxHistoryLen;
-}
-
-void QL::initSeq() {
-	for(int i = 0; i < numFrmStack; ++i) {
-		int x = rand()%numAction;
-		interface->writeInPipe(toString(ind2Act[x]));
-		interface->readFromPipe();
-		interface->saveFrameInfo();
+double QL::repeatLastAction(int toAct, int x, bool toTrain) {
+	double lastScore = 0;
+	for(int i = 0; i < x && !gameOver(); ++i) {
+		lastScore += playAction(toAct);
+	}
+	if(toTrain)
 		saveGrayScrn();
-	}
+	return lastScore;
 }
 
-void QL::takeAction() {
-	int toAct = chooseAction();
-	interface->writeInPipe(toString(toAct));
-	interface->readFromPipe();
-	interface->saveFrameInfo();
-	saveGrayScrn();
+void QL::saveHistory(History history) {
+	dExp.push_back(history);
+	if(dExp.size() >= (unsigned int)maxHistoryLen) {
+		dExp.pop_front();
+	}
+	virtNumTransSaved++;
 }
 
-void QL::getAMiniBatch() {
-	for(int i = 0; i < miniBatchSize; ++i) {
-		miniBatch[i] = rand()%(dExp.size());
-	}
-}
-
-void QL::learnWts() {
-	
-	if(virtNumTransSaved < memThreshold)
-		return;
-	//std::cout << "iteration: " << numTimeLearnt << std::endl;
-	//PREPARE INPUT TO CNN FOR FORWARD PROP
-	int fMapSize = cnn->getInputFMSize();
-	int cnnInputSize = fMapSize * miniBatchSize * numFrmStack;
-	float *inputToCNN = new float[cnnInputSize];
-	memset(inputToCNN, 0, cnnInputSize*sizeof(float));
-	for(int i = 0; i < miniBatchSize; ++i) {
-		//set output yj and backpropagate
-		int j = 0;
-		int cnt = dExp[miniBatch[i]].fiJN;
-		cnt = (maxHistoryLen + cnt - 3)%maxHistoryLen;
-		while(j < numFrmStack) {
-			for(int k = 0; k < fMapSize; ++k) {
-				inputToCNN[i*fMapSize*numFrmStack + j*fMapSize + k] = (1.0*grayScrnHist[cnt][k])/255.0 -0.5;
-			}
-			j++;
-			cnt = (cnt + 1)%maxHistoryLen;
-		}
-	}
-	//PREPARE INPUT TO CNN FOR FORWARD PROP COMPLETES HERE
-	// fiJ, reward, act, isTerm, fiJN;
-	float *qVals = cnn->forwardNGetQVal(inputToCNN);
-
-	//PRINT QVALS IN A FILE TO CHECK IF THEY ARE CONVERGING OR DIVERGING
-	std::ofstream qVFile("qValsFile.txt");
-	for(int i = 0; i < miniBatchSize*numAction; ++i) {
-		qVFile << qVals[i] << " ";
-	}
-	qVFile << std::endl;
-	qVFile.close();
-	//PRINT COMPLETES HERE
-	//PREPARE TARGET VALUES
-	float *targ = new float[miniBatchSize*numAction];
-	memset(targ, 0, miniBatchSize*numAction*sizeof(float));
+void QL::prepareTarget(float *targ, float *qVals) {
 	//target will be zero for those actions which are not performed
 	//since we dont know how well would they have done
 	for(int i = 0; i < miniBatchSize; ++i) {
@@ -154,132 +125,198 @@ void QL::learnWts() {
 			targ[i*numAction + dExp[miniBatch[i]].act] = dExp[miniBatch[i]].reward;
 		}
 	}
-	//std::cout << " Targ: " << std::endl;
-	//printHostVector(miniBatchSize*numAction, targ);
-	//std::cout << " qVals: " << std::endl;
-	//printHostVector(miniBatchSize*numAction, qVals);
-	//PREPARE TARGET VALUES COMPLETES HERE
+}
 
-	//PREPARE INPUT TO CNN AGAIN
-	memset(inputToCNN, 0, cnnInputSize*sizeof(float));
+void QL::learnWts() {
+	
+	resetInputToCNN();
 	for(int i = 0; i < miniBatchSize; ++i) {
-		//set output yj and backpropagate
-		int j = 0;
-		int cnt = dExp[miniBatch[i]].fiJ;
-		cnt = (maxHistoryLen + cnt - 3)%maxHistoryLen;
-		while(j < numFrmStack) {
-			for(int k = 0; k < fMapSize; ++k) {
-				inputToCNN[i*fMapSize*numFrmStack + j*fMapSize + k] = (1.0*grayScrnHist[cnt][k])/255.0 -0.5;
-			}
-			j++;
-			cnt = (cnt + 1)%maxHistoryLen;
-		}
+		setInputToCNN(dExp[miniBatch[i]].fiJN, i);
 	}
-	//PREPARE INPUT TO CNN AGAIN ENDS HERE
+
+	float *qVals = cnn->forwardNGetQVal(inputToCNN);
+	printQVals(qVals);
+
+	float *targ = new float[miniBatchSize*numAction];
+	memset(targ, 0, miniBatchSize*numAction*sizeof(float));
+	prepareTarget(targ, qVals);
+
+	resetInputToCNN();
+	for(int i = 0; i < miniBatchSize; ++i) {
+		setInputToCNN(dExp[miniBatch[i]].fiJ, i);
+	}
 
 	//TAKE A STEP
-	int maxLIter = 20;
+	int maxLIter = 2;
 	cnn->learn(inputToCNN, targ, maxLIter);
-	
-	//std::cout << "targ" << std::endl;
-	//printHostVector(miniBatchSize*numAction, targ);
-	
 	numTimeLearnt++;
 	if(numTimeLearnt%saveWtTimePer==0)
 		cnn->saveFilterWts();
 	
 	delete[] targ;
-	delete[] inputToCNN;
 	
 }
 
-void QL::saveHistory() {
-	//history saving cufrmcnt - 1, currew, curact, curisterm, curfrmcnt
-	int cnt = interface->getCurFrmCnt();
-	History history = {(maxHistoryLen + cnt-1)%maxHistoryLen, interface->getCurRew(), interface->getCurAct(), interface->isTerminal(), (cnt)%maxHistoryLen};
-	dExp.push_back(history);
-	if(dExp.size() >= (unsigned int)maxHistoryLen) {
-		dExp.pop_front();
-	}
-	virtNumTransSaved++;
-}
-
-int QL::getArgMaxQ() {
-	//PREPARATION OF INPUT TO CNN
-	int fMapSize = cnn->getInputFMSize();
-	int cnnInputSize = fMapSize * miniBatchSize * numFrmStack;
-	float *inputToCNN = new float[cnnInputSize];
-	memset(inputToCNN, 0, cnnInputSize*sizeof(float));
-	int i = 0;
-	int cnt = curLastHistInd;
-	int ImgInd = 0;
-	while(i < numFrmStack) {
-		for(int j = 0; j < fMapSize; ++j) {
-			inputToCNN[ImgInd*fMapSize*numFrmStack+i*fMapSize+j] = (1.0*grayScrnHist[cnt][j])/255.0 -0.5;
+double QL::playAnEpisode(bool toTrain) {
+	double epScore = 0;
+	int ftime = 1;
+	while(!gameOver() && !interface->isTerminal()) {
+		#ifdef TESTQL
+			std::cout << "Epoch Started" << std::endl;
+		#endif
+		if(ftime == 1) {
+			ftime = 0;
+			epScore += initSeq();
 		}
-		i++;
-		cnt = (maxHistoryLen+cnt-1)%maxHistoryLen;
+		int toAct = chooseAction(toTrain);
+		double lastScore = repeatLastAction(ind2Act[toAct], numFrmStack, toTrain);
+		epScore += lastScore;
+		int reward = 0;
+		if(toTrain) {
+			if(lastScore != 0.0f) {
+				reward = 1;
+				if(lastScore < 0.0f) {
+					reward = -1;
+				}
+			}
+			History history = {(maxHistoryLen+curLastHistInd-2)%maxHistoryLen, 
+								reward, 
+								toAct, 
+								interface->isTerminal(), 
+								(maxHistoryLen+curLastHistInd-1)%maxHistoryLen};
+			saveHistory(history);
+			#ifdef TESTQL
+				printHistory(history);
+			#endif
+			if(dExp.size() > memThreshold) {
+				getAMiniBatch();
+				learnWts();
+			}
+		}
+		#ifdef TESTQL
+			std::cout << "Epoch Ended" << std::endl;
+		#endif
 	}
-	//ONLY ONE INPUT HENCE ImgInd need not be used any further
-	//PREPARATION OF INPUT TO CNN COMPLETES HERE
-
-	int maxQInd = cnn->chooseAction(inputToCNN, numAction);
-	delete[] inputToCNN;
-	return maxQInd;
+	interface->resetVals(1);
+	return epScore;
 }
 
-int QL::chooseAction() {
-	if(interface->getCurFrmCnt() > epsilonDecay)
-		epsilon = 0.1;
-	else
-		epsilon = 1 - (1.0*interface->getCurFrmCnt())/(1.0*epsilonDecay);
-
-	double rn = (1.0*rand())/(1.0*RAND_MAX);
-	if(rn < epsilon) {
-		//std::cout << "Action: " << ind2Act[rand()%numAction] << " RANDOM" << std::endl;
-		return ind2Act[rand()%numAction];
+void QL::run() {
+	#ifdef TESTQL
+		printInfo();
+	#endif
+	init();
+	//while(1)
+	std::ofstream qlFile(qlLogFile.c_str());
+	while(!gameOver()) {
+		double score = playAnEpisode(true);
+		qlFile << "EP No. " << interface->getCurEpNum() << " and score: " << score << " WF No. " << cnn->getCurWFNum() << std::endl;
+		if((interface->getCurEpNum())%10 == 0) {
+			score = playAnEpisode(false);
+			qlFile << "Test: " << interface->getCurEpNum() << " and score: " << score << std::endl;
+		}
 	}
-	else {
-		int amQ = getArgMaxQ();
-		//std::cout << "Action: " << ind2Act[amQ] << " GREEDY" << std::endl;
-		return ind2Act[amQ];
+	finalize();
+}
+
+void QL::getAMiniBatch() {
+	for(int i = 0; i < miniBatchSize; ++i) {
+		miniBatch[i] = rand()%(dExp.size());
 	}
 }
 
-void QL::test() {
-	std::ofstream qlLog("ql.txt");
-
-	qlLog << "QL Testing START!..." << std::endl;
-	qlLog << "Number of Actions: " << numAction << std::endl;
-	qlLog << "Size of frame stack: " << numFrmStack << std::endl;
-	qlLog << "Max History Length: " << maxHistoryLen << std::endl;
-	qlLog << "Minibatch size: " << miniBatchSize << std::endl;
-	qlLog << "Actions: " << std::endl;
+void QL::printInfo() {
+	std::cout << "QL Testing START!..." << std::endl;
+	std::cout << "Number of Actions: " << numAction << std::endl;
+	std::cout << "Size of frame stack: " << numFrmStack << std::endl;
+	std::cout << "Max History Length: " << maxHistoryLen << std::endl;
+	std::cout << "Minibatch size: " << miniBatchSize << std::endl;
+	std::cout << "Actions: " << std::endl;
 	for(int i = 0; i < numAction; ++i) {
-		qlLog << "Action with index: " << i << " is: " << ind2Act[i] << std::endl;
+		std::cout << "Action with index: " << i << " is: " << ind2Act[i] << std::endl;
 	}
-	int fTime = 1;
+}
+
+void QL::init() {
 	//init pipes
-	initPipes();
-	initCNN();
-	qlLog << "Pipes Initiated!..." << std::endl;
-	while(!interface->isToEnd()) {
-		if(interface->resetVals(1) || fTime) {
-			fTime = 0;
-			initSeq();
-		}
-		takeAction();
-		saveHistory();
-		qlLog << "Virtual History Number: " << virtNumTransSaved << std::endl;
-		qlLog << "History Saved: " << std::endl;
-		int cnt = interface->getCurFrmCnt();
-		qlLog << (maxHistoryLen + cnt - 1)%maxHistoryLen << ", " << interface->getCurRew() << ", " << interface->getCurAct() << ", " << interface->isTerminal() << ", " << cnt%maxHistoryLen  << std::endl;
-		qlLog << "EP No. " << interface->getCurEpNum() << " WF No. " << cnn->getCurWFNum() << std::endl;
-		getAMiniBatch();
-		learnWts();
-		qlLog << "Loss: " << cnn->getCurrentLoss() << std::endl;
-	}
+	interface->openPipe();
+	interface->initInPipe();
+	interface->initOutPipe();
+	//init cnn
+	cnn->init();
+	//init input to CNN
+	fMapSize = cnn->getInputFMSize();
+	cnnInputSize = fMapSize * miniBatchSize * numFrmStack;
+	inputToCNN = new float[cnnInputSize];
+	resetInputToCNN();
+}
+
+void QL::printHistory(History history) {
+	std::cout << "prev Hist Ind: " << history.fiJ << std::endl;
+	std::cout << "Reward: " << history.reward << std::endl;
+	std::cout << "Acted: " << history.act << (isRandom?" RANDOM ":" DECISION ") << std::endl;
+	std::cout << "is Terminal: " << history.isTerm << std::endl;
+	std::cout << "new Hist Ind: " << history.fiJN << std::endl;
+}
+
+void QL::finalize() {
 	interface->finalizePipe();
-	qlLog << "QL Testing END!..." << std::endl;
-	qlLog.close();
+}
+
+void QL::printQVals(float *qVals) {
+	//PRINT QVALS IN A FILE TO CHECK IF THEY ARE CONVERGING OR DIVERGING
+	std::ofstream qVFile("qValsFile.txt");
+	for(int i = 0; i < miniBatchSize*numAction; ++i) {
+		qVFile << qVals[i] << " ";
+	}
+	qVFile << std::endl;
+	qVFile.close();
+	//PRINT COMPLETES HERE
+}
+
+void QL::printInputToCNN() {
+	std::string path = info.dataPath + "/inputToCNN" + toString(numInpSaved);
+	numInpSaved++;
+	std::ofstream myF(path.c_str());
+	for(int i = 0; i < miniBatchSize; ++i) {
+		for(int j = 0; j < numFrmStack; ++j) {
+			for(int k = 0; k < fMapSize; ++k) {
+				myF << inputToCNN[i*fMapSize*numFrmStack + j*fMapSize + k] << std::endl;
+			}
+		}
+	}
+	myF.close();
+}
+
+bool QL::gameOver() {
+	return interface->isToEnd();
+}
+
+int QL::episodeOver() {
+	return interface->isTerminal();
+}
+
+double QL::playAction(int x) {
+	interface->writeInPipe(toString(x));
+	interface->readFromPipe();
+	interface->saveFrameInfo();
+	return interface->getCurRew();
+}
+
+void QL::saveGrayScrn() {
+	grayScrnHist[curLastHistInd%maxHistoryLen] = interface->getGrayScrn();
+	curLastHistInd = (curLastHistInd+1)%maxHistoryLen;
+}
+
+double QL::initSeq() {
+	double netScore = 0;
+	for(int i = 0; i < numFrmStack && !gameOver(); ++i) {
+		netScore += playAction(ind2Act[rand()%numAction]);
+		saveGrayScrn();
+	}
+	return netScore;
+}
+
+void QL::resetInputToCNN() {
+	memset(inputToCNN, 0, cnnInputSize*sizeof(float));
 }

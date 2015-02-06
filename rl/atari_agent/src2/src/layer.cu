@@ -3,15 +3,13 @@
 #include "layer.h"
 #include <cmath>
 
-__global__ void updateFilter(value_type *d_in, value_type *grad, value_type *msq, value_type alpha, value_type gamma, int n, int batchSize) {
+__global__ void updateFilter(value_type *d_in, value_type *grad, value_type *msq, value_type alpha, value_type rho, int n, int batchSize, float eps) {
 	int idx = threadIdx.x + blockIdx.x*blockDim.x;
 	if(idx>=n)
 		return;
 	value_type temp = grad[idx];
-	msq[idx] = (1-gamma)*msq[idx] + gamma*temp*temp;
-	if(msq[idx] > 0.0f) {
-		d_in[idx] -= (alpha/(1.0*batchSize))*(temp/sqrt(msq[idx]));
-	}
+	msq[idx] = (1-rho)*msq[idx] + rho*temp*temp;
+	d_in[idx] -= (alpha)*(temp/sqrt(msq[idx] + eps));
 }
 
 Layer::Layer(int inputs_, int outputs_, int kernelDim_, int stride_, value_type iRangeD_, value_type iRangeB_) {
@@ -90,7 +88,7 @@ void Layer::update(value_type alpha, value_type gamma, int batchSize) {
 	int size = inputs*outputs*kernelDim*kernelDim;
 	dim3 threadsPerBlock(BLOCKSIZE);
 	dim3 numBlocks((size-1)/threadsPerBlock.x + 1);
-	updateFilter<<<numBlocks, threadsPerBlock>>>(d_data, d_grad, d_msq, alpha, gamma, size, batchSize);
+	updateFilter<<<numBlocks, threadsPerBlock>>>(d_data, d_grad, d_msq, alpha, gamma, size, batchSize, 0.001f);
 }
 
 void Layer::copyDataDTH() {

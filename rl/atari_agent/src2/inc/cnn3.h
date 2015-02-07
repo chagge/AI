@@ -63,6 +63,7 @@ class CNN {
 		void copyFltrToHist();
 		void learn(value_type*, value_type*, int);
 		float getPrevLoss();
+		void resize(int, value_type**);
 };
 
 #endif

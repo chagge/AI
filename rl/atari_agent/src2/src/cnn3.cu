@@ -61,6 +61,14 @@ CNN::~CNN() {
 	checkCudaErrors(cudaFree(d_nn));
 }
 
+void CNN::resize(int size, value_type **data) {
+    if(*data != NULL)
+    {
+        checkCudaErrors(cudaFree(*data));
+    }
+    checkCudaErrors(cudaMalloc(data, size*sizeof(value_type)));
+}
+
 void CNN::init() {
 	initLayers();
 	forwardPropToGetDim();
@@ -155,7 +163,12 @@ void CNN::forwardProp(value_type *h_inpLayer) {
 	int tnnu = inputSize;
 	for(int i = 0; i < numFltrLayer; ++i) {
 		network->convoluteForward(*fltrLyr[i], n, c, h, w, srcData, &dstData, info.isBias);
-		network->activationForwardLeakyRELU(n, c, h, w, dstData, &srcData, negSlopeRelu);
+		if(i == numFltrLayer - 1) {
+			resize(n*c*h*w, &srcData);
+			checkCudaErrors(cudaMemcpyDTD(srcData, dstData, n*c*h*w*sizeof(value_type)));
+		}
+		else
+			network->activationForwardLeakyRELU(n, c, h, w, dstData, &srcData, negSlopeRelu);
 
 		assert(n*c*h*w == nnLayerDim[i+1].x*nnLayerDim[i+1].y*nnLayerDim[i+1].z*nnLayerDim[i+1].w);
 		//cpy to d_nn
@@ -193,16 +206,20 @@ void CNN::backwardProp(value_type *h_err) {
 	int tnnu = totalNNUnits - inputSize;
 	for(int i = numFltrLayer; i >= 1; --i) {
 		nI = nnLayerDim[i-1].w, cI = nnLayerDim[i-1].z, hI = nnLayerDim[i-1].x, wI = nnLayerDim[i-1].y;
+		if(i == numFltrLayer) {
+			resize(n*c*h*w, &gradData);
+			checkCudaErrors(cudaMemcpyDTD(gradData, diffData, n*c*h*w*sizeof(value_type)));
+		} else
+			network->activationBackwardLeakyRELU(n, c, h, w, 
+												d_nn + tnnu, 
+												diffData, 
+												d_nn + tnnu, 
+												&gradData, 
+												negSlopeRelu);
 		if(info.isBias)
 			network->convoluteBackwardBias(n, c, h, w, 
-											diffData, 
+											gradData, 
 											&(fltrLyr[i-1]->d_grad_bias));
-		network->activationBackwardLeakyRELU(n, c, h, w, 
-										d_nn + tnnu, 
-										diffData, 
-										d_nn + tnnu, 
-										&gradData, 
-										negSlopeRelu);
 		network->convoluteBacwardFilter(*fltrLyr[i-1],
 										nI, cI, hI, wI, 
 										d_nn + tnnu - nI*cI*hI*wI, 

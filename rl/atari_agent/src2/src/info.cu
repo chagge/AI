@@ -6,10 +6,14 @@
 #include <iostream>
 
 Info::Info() {
-	//empty conrtuctor
-	lr = 0.1;
-	gamma = 0.1;
-	gammaQ = 0.95;
+	//for ql
+	debugQL = true;
+	toTrain = true;
+	qlLogFile = "qlLog.txt";
+	//for nn
+	debugCNN = true;
+	isBias = true;
+	cnnLogFile = "cnnLog.txt";
 }
 Info::~Info() {
 	aleConfig.clear();
@@ -56,40 +60,10 @@ void Info::parseArg(int argc, char **argv) {
 				std::cout << "invalid fifo config file: use -h, --help for usage information" << std::endl;
 				exit(EXIT_FAILURE);
 			}
-		}			
-		else if(temp == "-l" || temp == "--learn_rate")
-		{
-			if(argc != i)
-				lr = atof(argv[i]);
-			else
-			{
-				std::cout << "invalid learning rate: use -h, --help for usage information" << std::endl;
-				exit(EXIT_FAILURE);
-			}
 		}		
-		else if(temp == "-g" || temp == "--gamma")
-		{
-			if(argc != i)
-				gamma = atof(argv[i]);
-			else
-			{
-				std::cout << "invalid gamma: use -h, --help for usage information" << std::endl;
-				exit(EXIT_FAILURE);
-			}
-		}		
-		else if(temp == "-gq" || temp == "--gamma_q")
-		{
-			if(argc != i)
-				gammaQ = atof(argv[i]);
-			else
-			{
-				std::cout << "invalid gamma: use -h, --help for usage information" << std::endl;
-				exit(EXIT_FAILURE);
-			}
-		}					
 		else if(temp == "-h" || temp == "--help")
 		{
-			std::cout << "atari: Atari learning agent\n\nUsage:atari [options] [filename...]\nDescription\n\nArguments: \n-h, --help \n\t\t show this help message and exit\n-a, --ale_config <filename> \n\t\t read ale configurations from this file\n-f, --fifo_config <filename> \n\t\t read fifo config from this file\n-l, --learn_rate <lr> \n\t\t cnn learn rate\n-g, --gamma <g> \n\t\t cnn rmsprop gamma\n-gq, --gamma_q <g> \n\t\t Q learner gamma(discount) for future rewards" << std::endl;
+			std::cout << "atari: Atari learning agent\n\nUsage:atari [options] [filename...]\nDescription\n\nArguments: \n-h, --help \n\t\t show this help message and exit\n-a, --ale_config <filename> \n\t\t read ale configurations from this file\n-f, --fifo_config <filename> \n\t\t read fifo config from this file\n-f, --nn_config <filename> \n\t\t read nn config from this file" << std::endl;
 			exit(EXIT_SUCCESS);
 		}
 		i--;
@@ -110,6 +84,14 @@ void Info::decodeStuff() {
 	ale >> numFrmReset;
 	ale >> numFrmStack;
 	ale >> maxHistoryLen;
+	ale >> epsilonDecay;
+	ale >> baseEpsilon;
+	ale >> futDiscount;
+	ale >> testAfterEveryNumEp;
+	ale >> memThreshold;
+	ale >> numLearnSteps;
+	ale >> saveWtTimePer;
+	ale >> miniBatchSize;
 	ale >> cropH;
 	ale >> cropW;
 	ale >> cropL;
@@ -121,8 +103,6 @@ void Info::decodeStuff() {
 		i++;
 	}
 	ale.close();
-
-	miniBatchSize = 32;
 
 	std::ifstream fifo(fifoConfig.c_str());
 	fifo >> dataPath;

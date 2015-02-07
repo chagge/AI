@@ -10,6 +10,7 @@
 #include <deque>
 #include <vector>
 #include <string>
+#include <fstream>
 
 class QL {
 	private:
@@ -20,51 +21,41 @@ class QL {
 		std::map<int, int> ind2Act;
 		std::deque<History> dExp;	//transitions
 		std::vector<int> *grayScrnHist;
-		int curLastHistInd;
-		double epsilon;
+		CNN *cnn;
+		int lastHistInd;
 		int epsilonDecay;
 		int maxHistoryLen;
 		int virtNumTransSaved;
 		int miniBatchSize;
 		int *miniBatch;
 		int numTimeLearnt;
-		CNN *cnn;
-		int memThreshold;
-		int saveWtTimePer;
-		float gammaQ;
-		std::string qlLogFile;
 		float *inputToCNN;
 		int cnnInputSize;
 		int fMapSize;
 		bool isRandom;
-		int numInpSaved;
+		std::ofstream qlLog;
 	public:
 		QL(Info x);
 		~QL();
-		void test();
-		void setInputToCNN(int lst, int imgInd);
-		int getArgMaxQ();
-		int chooseAction(bool toTrain);
-		double repeatLastAction(int toAct, int x, bool);
-		void saveHistory(History history);
-		void prepareTarget(float *targ, float *qVals);
-		void learnWts();
-		double playAnEpisode(bool toTrain);
 		void run();
-		void getAMiniBatch();
-		void printInfo();
 		void init();
-		void printHistory(History history);
-		void finalize();
-		void printQVals(float *qVals);
-		void printInputToCNN();
 		bool gameOver();
-		int episodeOver();
-		double playAction(int x);
-		void saveGrayScrn();
+		double playAnEpisode(bool);
 		double initSeq();
-		void resetInputToCNN();
+		int chooseAction(bool);
+		int getArgMaxQ();
+		double playAction(int);
+		void saveGrayScrn();
+		double repeatLastAction(int, int, bool);
+		void saveHistory(History);
+		void getAMiniBatch();
+		void learnWts();
 		void printInfile(std::ofstream&, float*, int);
+		void resetInputToCNN();
+		void setInputToCNN(int, int);
+		void prepareTarget(float*, float*);
+		void finalize();
+		void printParamInfo();
 };
 
 #endif

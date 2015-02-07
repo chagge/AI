@@ -9,10 +9,12 @@ __global__ void updateGen(value_type *d_in, value_type *grad, value_type *msq, v
 		return;
 	value_type temp = grad[idx];
 	msq[idx] = (rho)*msq[idx] + (1-rho)*temp*temp;
-	value_type deltaX = -1.0*alpha*(temp)/(1.0*sqrt(msq[idx]));
-	//value_type deltaX = -1.0*((1.0*sqrt(msqGrad[idx]+eps))*temp)/(1.0*sqrt(msq[idx] + eps));
-	//msqGrad[idx] = (rho)*msqGrad[idx] + (1-rho)*deltaX*deltaX;
-	d_in[idx] += deltaX;
+	if(msq[idx] > 0.0f) {
+		value_type deltaX = -1.0*alpha*(temp)/(1.0*sqrt(msq[idx]));
+		//value_type deltaX = -1.0*((1.0*sqrt(msqGrad[idx]+eps))*temp)/(1.0*sqrt(msq[idx] + eps));
+		//msqGrad[idx] = (rho)*msqGrad[idx] + (1-rho)*deltaX*deltaX;
+		d_in[idx] += deltaX;
+	}
 }
 
 Layer::Layer(int inputs_, int outputs_, int kernelDim_, int stride_, value_type iRangeD_, value_type iRangeB_) {

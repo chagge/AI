@@ -10,6 +10,7 @@
 #include <sstream>
 #include <cstdio>
 #include <iostream>
+#include <fstream>
 
 
 #define ALE_HEIGHT 210
@@ -68,5 +69,7 @@ int ntsc2gray(char, char);
 double rand_normal(double, double);
 void printDeviceVector(int, value_type*);
 void printHostVector(int, value_type*);
+void printDeviceVectorInFile(int, value_type*, std::ofstream&);
+void printHostVectorInFile(int, value_type*, std::ofstream&);
 
 #endif

@@ -6,6 +6,8 @@
 #include "layer.h"
 #include "network.h"
 #include <string>
+#include "info.h"
+#include <fstream>
 
 class CNN {
 	private:
@@ -19,20 +21,22 @@ class CNN {
 		Network *network;
 		value_type *d_nn;
 		value_type *qVals;
-		value_type gamma;
+		value_type rho;
 		int miniBatchSize;
 		int firstNNLayerUnits;
 		int lastNNLayerUnits;
 		int totalNNUnits;
 		int totalFltrUnits;
 		int saveFltrCntr;
-		std::string dataPath;
 		float loss;
 		float prevLoss;
 		int numSteps;
 		int stepSize;
+		Info info;
+		std::ofstream cnnLog;
+		float negSlopeRelu;
 	public:
-		CNN(std::string, float, float, std::string);
+		CNN(Info);
 		~CNN();
 		void init();
 		void initLayers();
@@ -46,11 +50,6 @@ class CNN {
 		void printGenAttr();
 		void printNNLayerDim();
 		void printFltrLayerAttr();
-		void printFltrLayer(int);
-		void printAllFltrLayer();
-		void printFltrLayerGrad(int);
-		void printAllFltrLayerGrad();
-		void testForwardAndBackward();
 		void testIterate(int);
 		void resetQVals();
 		void step(value_type*, value_type*);

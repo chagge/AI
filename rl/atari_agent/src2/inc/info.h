@@ -7,28 +7,44 @@
 
 class Info{
 	public:
+		//for ql
 		int numAction;
+		int numFrmStack;
+		int maxHistoryLen;
+		int epsilonDecay;
+		int miniBatchSize;
+		bool debugQL;
+		bool toTrain;
+		int testAfterEveryNumEp;
+		int memThreshold;
+		std::string qlLogFile;
+		float baseEpsilon;
+		int numLearnSteps;
+		int saveWtTimePer;
+		float futDiscount;
+
+		//for ql and interface
+		std::map<int, int> ind2Act;
+		std::map<int, int> act2Ind;
+
+		//for nn
+		bool debugCNN;
+		bool isBias;
+		std::string cnnLogFile;
+
+		std::string nnConfig;	//input
 		std::string aleConfig;	//input
 		std::string fifoConfig;	//input
-		std::string nnConfig;	//input
 		std::string dataPath;
 		std::string pathFifoIn;
 		std::string pathFifoOut;
 		int maxNumFrame;
-		std::map<int, int> ind2Act;
-		std::map<int, int> act2Ind;
 		int resetButton;
 		int numFrmReset;
-		int numFrmStack;
-		int maxHistoryLen;
-		int miniBatchSize;
 		int cropH;
 		int cropW;
 		int cropL;
 		int cropT;
-		float lr;
-		float gamma;
-		float gammaQ;
 		Info();
 		~Info();
 		void parseArg(int, char**);

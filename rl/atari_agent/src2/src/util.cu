@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <cmath>
+#include <fstream>
 
 int ntsc2rgb[] = {
 	0x000000, 0, 0x4a4a4a, 0, 0x6f6f6f, 0, 0x8e8e8e, 0,
@@ -126,4 +127,25 @@ void printHostVector(int size, value_type *h_vec) {
         std::cout << h_vec[i] << " ";
     }
     std::cout << std::endl;
+}
+
+void printDeviceVectorInFile(int size, value_type *d_vec, std::ofstream& myFile) {
+    value_type *vec;
+    vec = new value_type[size];
+    cudaDeviceSynchronize();
+    checkCudaErrors(cudaMemcpyDTH(vec, d_vec, size*sizeof(value_type)));
+    for (int i = 0; i < size; i++)
+    {
+        myFile << vec[i] << " ";
+    }
+    myFile << std::endl;
+    delete[] vec;
+}
+
+void printHostVectorInFile(int size, value_type *h_vec, std::ofstream& myFile) {
+    for (int i = 0; i < size; i++)
+    {
+        myFile << h_vec[i] << " ";
+    }
+    myFile << std::endl;
 }

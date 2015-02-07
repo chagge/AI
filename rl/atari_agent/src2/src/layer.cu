@@ -30,6 +30,11 @@ Layer::~Layer() {
 	checkCudaErrors(cudaFree(d_msq));
 	checkCudaErrors(cudaFree(d_grad));
 	checkCudaErrors(cudaFree(d_bias_msq));
+	checkCudaErrors(cudaFree(d_msq_grad_bias));
+	checkCudaErrors(cudaFree(d_msq_grad_data));
+	checkCudaErrors(cudaFree(d_hist_data));
+	checkCudaErrors(cudaFree(d_hist_bias));
+
 }
 void Layer::randInit(value_type **h_dt, value_type **d_dt, int size, value_type irange) {
 	int sizeInBytes = size*sizeof(value_type);

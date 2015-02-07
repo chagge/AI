@@ -7,9 +7,9 @@
 
 Info::Info() {
 	//empty conrtuctor
-	lr = 0.01;
+	lr = 0.1;
 	gamma = 0.1;
-	gammaQ = 0.90;
+	gammaQ = 0.95;
 }
 Info::~Info() {
 	aleConfig.clear();

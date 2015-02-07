@@ -9,7 +9,7 @@
 #include "cnn3.h"
 #include <cmath>
 
-#define TESTCNN
+//#define CNNTESTITER
 
 CNN::CNN(std::string x, float z, float gamma_, std::string dataPath_) {
 	std::ifstream nnConfig(x.c_str());
@@ -30,6 +30,7 @@ CNN::CNN(std::string x, float z, float gamma_, std::string dataPath_) {
 		totalFltrUnits += in*out*ker*ker;
 		fltrLyr[i] = new Layer(in, out, ker, stride, irD, irB);
 	}
+	nnConfig >> stepSize;
 	nnConfig.close();
 	baseLearnRate = z;
 	gamma = gamma_;
@@ -37,6 +38,8 @@ CNN::CNN(std::string x, float z, float gamma_, std::string dataPath_) {
 	network = new Network();
 	saveFltrCntr = 0;
 	dropFactor = 0.1f;
+	numSteps = 0;
+
 
 	d_nn = NULL;
 	#ifdef TEST
@@ -78,7 +81,7 @@ void CNN::forwardPropToGetDim() {
 		checkCudaErrors(cudaMemset(srcData, 0, inputSize*sizeof(value_type)));	//ZERO MEMSET
 
 	for(int i = 0; i < numFltrLayer; ++i) {
-		network->convoluteForward(*fltrLyr[i], n, c, h, w, srcData, &dstData);
+		network->convoluteForward(*fltrLyr[i], n, c, h, w, srcData, &dstData, false);
 		nnLayerDim[i+1].w = n;
 		nnLayerDim[i+1].z = c;
 		nnLayerDim[i+1].x = h;
@@ -125,7 +128,7 @@ void CNN::forwardProp(value_type *h_inpLayer) {
 
 	int tnnu = inputSize;
 	for(int i = 0; i < numFltrLayer; ++i) {
-		network->convoluteForward(*fltrLyr[i], n, c, h, w, srcData, &dstData);
+		network->convoluteForward(*fltrLyr[i], n, c, h, w, srcData, &dstData, true);
 		//may be some different modes and
 		// no activation at some points 
 		// utility can be added here
@@ -167,6 +170,7 @@ void CNN::backwardProp(value_type *h_err) {
 	int tnnu = totalNNUnits - inputSize;
 	for(int i = numFltrLayer; i >= 1; --i) {
 		nI = nnLayerDim[i-1].w, cI = nnLayerDim[i-1].z, hI = nnLayerDim[i-1].x, wI = nnLayerDim[i-1].y;
+		network->convoluteBackwardBias(n, c, h, w, diffData, &(fltrLyr[i-1]->d_grad_bias));
 		network->activationBackwardLeakyRELU(n, c, h, w, d_nn + tnnu, diffData, d_nn + tnnu, &gradData, 0.01f);
 		network->convoluteBacwardFilter(*fltrLyr[i-1], nI, cI, hI, wI, d_nn + tnnu - nI*cI*hI*wI, n, c, h, w, gradData, &(fltrLyr[i-1]->d_grad));
 		if(i > 1) {
@@ -313,8 +317,10 @@ void CNN::testIterate(int numIter) {
 
 	std::cout << "Target: " << std::endl;
 	printHostVector(lastNNLayerUnits, targ);
+	learnRate = baseLearnRate;
 	prevLoss = -1.0f;
 	for(int i = 0; i < numIter; ++i) {
+		std::cout << "iter no.: " << i << std::endl;
 		step(testInput, targ);
 	}
 	printHostVector(lastNNLayerUnits, targ);
@@ -329,22 +335,29 @@ void CNN::step(value_type *h_inpLayer, value_type *target) {
 	resetNN();
 	resetQVals();
 	forwardProp(h_inpLayer);
-	#ifdef TESTCNN
-		std::cout << "qval" << std::endl;
-		printHostVector(lastNNLayerUnits, qVals);
-	#endif
 	loss = 0;
 	for(int i = 0; i < lastNNLayerUnits; ++i) {
 		err[i] = -1*(target[i] - qVals[i]);
 		loss += err[i]*err[i];
 	}
 	loss = (1.0/miniBatchSize)*std::sqrt(loss);
-	if(prevLoss == -1.0f || (prevLoss > loss)) {
+	#ifdef CNNTESTITER
+				std::cout << "LOSS: " << loss << " PREV LOSS: " << prevLoss << std::endl;
+	#endif
+	if(prevLoss == -1.0f || (prevLoss >= loss)) {
 			prevLoss = loss;
 			copyFltrToHist();
 			backwardProp(err);
+			#ifdef CNNTESTITER
+				std::cout << "YES BACKPROP" << std::endl;
+				printHostVector(lastNNLayerUnits, qVals);
+			#endif
 			
 		} else {
+			#ifdef CNNTESTITER
+				std::cout << "NO BACKPROP" << std::endl;
+				printHostVector(lastNNLayerUnits, qVals);
+			#endif
 			learnRate = learnRate * dropFactor;
 			loadFltrFrmHist();
 		}
@@ -363,20 +376,19 @@ void CNN::copyFltrToHist() {
 }
 
 void CNN::learn(value_type *h_inpLayer, value_type *target, int mIter) {
-	#ifdef TESTCNN
-		std::cout << "Learning Started" << std::endl;
-	#endif
 	learnRate = baseLearnRate;
 	prevLoss = -1.0f;
+	std::ofstream lossFile("loss.txt");
 	for(int i = 0; i < mIter; ++i) {
 		step(h_inpLayer, target);
-		#ifdef TESTCNN
-			std::cout << "iter no. " << i << " loss: " << loss << " prevloss: " << prevLoss << std::endl;
-		#endif
+		lossFile << "iter no. " << i << " loss: " << loss << " prevloss: " << prevLoss << std::endl;
+		//std::cout << "iteration No." << i << " loss:" << prevLoss << std::endl;
 	}
-	#ifdef TESTCNN
-		std::cout << "Learning Ended" << std::endl;
-	#endif
+	lossFile.close();
+	numSteps++;
+	if(numSteps%stepSize==0) {
+		baseLearnRate = baseLearnRate * dropFactor;
+	}
 }
 
 int CNN::chooseAction(value_type *h_inpLayer, int numAction) {

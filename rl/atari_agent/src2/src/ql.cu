@@ -56,7 +56,7 @@ void QL::setInputToCNN(int lst, int imgInd) {
 	int i = 0, cnt = (maxHistoryLen + lst - (numFrmStack-1))%maxHistoryLen;
 	while(i < numFrmStack) {
 		for(int j = 0; j < fMapSize; ++j) {
-			inputToCNN[imgInd*fMapSize*numFrmStack+i*fMapSize+j] = (1.0*grayScrnHist[cnt][j]);
+			inputToCNN[imgInd*fMapSize*numFrmStack+i*fMapSize+j] = (1.0*grayScrnHist[cnt][j])/255.0-0.5;
 		}
 		i++;
 		cnt = (cnt+1)%maxHistoryLen;
@@ -127,7 +127,17 @@ void QL::prepareTarget(float *targ, float *qVals) {
 	}
 }
 
+void QL::printInfile(std::ofstream& myF, float *val, int sz) {
+	for(int i = 0; i < sz; ++i) {
+		myF << val[i] << " ";
+	}
+	myF << std::endl;
+	myF << std::endl;
+}
+
 void QL::learnWts() {
+
+	std::ofstream logFile("mainLog.txt", std::fstream::out | std::fstream::app);
 	
 	resetInputToCNN();
 	for(int i = 0; i < miniBatchSize; ++i) {
@@ -135,11 +145,18 @@ void QL::learnWts() {
 	}
 
 	float *qVals = cnn->forwardNGetQVal(inputToCNN);
-	printQVals(qVals);
+
+	logFile << "ITERATION NO.: " << numTimeLearnt << std::endl;
+	logFile << "Predicted QVals: " << std::endl;
+	printInfile(logFile, qVals, miniBatchSize*numAction);
+	//printQVals(qVals);
 
 	float *targ = new float[miniBatchSize*numAction];
 	memset(targ, 0, miniBatchSize*numAction*sizeof(float));
 	prepareTarget(targ, qVals);
+
+	logFile << "Target was: " << std::endl;
+	printInfile(logFile, targ, miniBatchSize*numAction);
 
 	resetInputToCNN();
 	for(int i = 0; i < miniBatchSize; ++i) {
@@ -147,8 +164,13 @@ void QL::learnWts() {
 	}
 
 	//TAKE A STEP
-	int maxLIter = 2;
+	int maxLIter = 1;
 	cnn->learn(inputToCNN, targ, maxLIter);
+
+	logFile << "New Predicted QVals: " << std::endl;
+	printInfile(logFile, cnn->getQVals(), miniBatchSize*numAction);
+	logFile.close();
+
 	numTimeLearnt++;
 	if(numTimeLearnt%saveWtTimePer==0)
 		cnn->saveFilterWts();

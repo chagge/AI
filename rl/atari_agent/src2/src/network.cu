@@ -22,19 +22,19 @@ __global__ void leakyReluActivateBackward(value_type *d_in, value_type *d_out, v
 }
 
 void Network::createHandles() {
-	checkCUDNN(cudnnCreate(&cudnnHandle));
-	checkCUDNN(cudnnCreateTensorDescriptor(&srcTensorDesc));
-	checkCUDNN(cudnnCreateTensorDescriptor(&dstTensorDesc));
-	checkCUDNN(cudnnCreateTensorDescriptor(&biasTensorDesc));
-	checkCUDNN(cudnnCreateTensorDescriptor(&dataGradTensorDesc));
-	checkCUDNN(cudnnCreateTensorDescriptor(&diffTensorDesc));
-	checkCUDNN(cudnnCreateFilterDescriptor(&filterDesc));
-	checkCUDNN(cudnnCreateFilterDescriptor(&filterGradDesc));
-	checkCUDNN(cudnnCreateConvolutionDescriptor(&convDesc));
+  checkCUDNN(cudnnCreate(&cudnnHandle));
+  checkCUDNN(cudnnCreateTensorDescriptor(&srcTensorDesc));
+  checkCUDNN(cudnnCreateTensorDescriptor(&dstTensorDesc));
+  checkCUDNN(cudnnCreateTensorDescriptor(&biasTensorDesc));
+  checkCUDNN(cudnnCreateTensorDescriptor(&dataGradTensorDesc));
+  checkCUDNN(cudnnCreateTensorDescriptor(&diffTensorDesc));
+  checkCUDNN(cudnnCreateFilterDescriptor(&filterDesc));
+  checkCUDNN(cudnnCreateFilterDescriptor(&filterGradDesc));
+  checkCUDNN(cudnnCreateConvolutionDescriptor(&convDesc));
 }
 
 void Network::destroyHandles() {
-	checkCUDNN(cudnnDestroyConvolutionDescriptor(convDesc));
+  checkCUDNN(cudnnDestroyConvolutionDescriptor(convDesc));
     checkCUDNN(cudnnDestroyFilterDescriptor(filterDesc));
     checkCUDNN(cudnnDestroyFilterDescriptor(filterGradDesc));
     checkCUDNN(cudnnDestroyTensorDescriptor(srcTensorDesc));
@@ -47,13 +47,13 @@ void Network::destroyHandles() {
 
 
 Network::Network() {
-	dataType = CUDNN_DATA_FLOAT;
-	tensorFormat = CUDNN_TENSOR_NCHW;
-	createHandles();
+  dataType = CUDNN_DATA_FLOAT;
+  tensorFormat = CUDNN_TENSOR_NCHW;
+  createHandles();
 }
 
 Network::~Network() {
-	destroyHandles();
+  destroyHandles();
 }
 void Network::resize(int size, value_type **data) {
     if(*data != NULL)
@@ -80,7 +80,7 @@ void Network::addBias(const cudnnTensorDescriptor_t& dstTensorDesc, const Layer&
 }
 void Network::convoluteForward(const Layer& conv,
                   int& n, int& c, int& h, int& w,
-                  value_type* srcData, value_type** dstData) {
+                  value_type* srcData, value_type** dstData, bool biasAdd) {
     cudnnConvolutionFwdAlgo_t algo;
 
     checkCUDNN(cudnnSetTensor4dDescriptor(srcTensorDesc,
@@ -100,7 +100,7 @@ void Network::convoluteForward(const Layer& conv,
                                                 0,0, // padding
                                                 conv.stride,conv.stride, // stride
                                                 1,1, // upscale
-                                                CUDNN_CROSS_CORRELATION));	//OR CUDNN_CONVOLUTION
+                                                CUDNN_CROSS_CORRELATION));  //OR CUDNN_CONVOLUTION
     // find dimension of convolution output
     checkCUDNN(cudnnGetConvolution2dForwardOutputDim(convDesc,
                                             srcTensorDesc,
@@ -151,7 +151,8 @@ void Network::convoluteForward(const Layer& conv,
                                           &beta,
                                           dstTensorDesc,
                                           *dstData) );
-    //addBias(dstTensorDesc, conv, c, *dstData); THIS CALL TO BE UNDERSTOOD AND CHANGED
+    if(biasAdd)
+      addBias(dstTensorDesc, conv, 1, c, 1, 1, *dstData);
     if (sizeInBytes!=0)
     {
       checkCudaErrors(cudaFree(workSpace));
@@ -194,18 +195,18 @@ void Network::convoluteBacwardData(const Layer& conv,
                       value_type* diffData,
                       int& nO, int& cO, int& hO, int& wO,
                       value_type** gradData) {
-	resize(nO*cO*hO*wO, gradData);
-	checkCUDNN(cudnnSetTensor4dDescriptor(diffTensorDesc,
+  resize(nO*cO*hO*wO, gradData);
+  checkCUDNN(cudnnSetTensor4dDescriptor(diffTensorDesc,
                                             tensorFormat,
                                             dataType,
                                             nI, cI,
                                             hI, wI));
-	checkCUDNN(cudnnSetTensor4dDescriptor(dataGradTensorDesc,
+  checkCUDNN(cudnnSetTensor4dDescriptor(dataGradTensorDesc,
                                             tensorFormat,
                                             dataType,
                                             nO, cO,
                                             hO, wO));
-	 checkCUDNN(cudnnSetFilter4dDescriptor(filterDesc,
+   checkCUDNN(cudnnSetFilter4dDescriptor(filterDesc,
                                           dataType,
                                           conv.outputs,
                                           conv.inputs, 
@@ -216,19 +217,19 @@ void Network::convoluteBacwardData(const Layer& conv,
                                                 0,0, // padding
                                                 conv.stride,conv.stride, // stride
                                                 1,1, // upscale
-                                                CUDNN_CROSS_CORRELATION));	//OR CUDNN_CONVOLUTION
+                                                CUDNN_CROSS_CORRELATION));  //OR CUDNN_CONVOLUTION
     value_type alpha = value_type(1);
     value_type beta  = value_type(0);
     checkCUDNN(cudnnConvolutionBackwardData(cudnnHandle,
-    										&alpha,
-    										filterDesc,
-    										conv.d_data,
-    										diffTensorDesc,
-    										diffData,
-    										convDesc,
-    										&beta,
-    										dataGradTensorDesc,
-    										*gradData));
+                        &alpha,
+                        filterDesc,
+                        conv.d_data,
+                        diffTensorDesc,
+                        diffData,
+                        convDesc,
+                        &beta,
+                        dataGradTensorDesc,
+                        *gradData));
     nI = nO;
     cI = cO;
     hI = hO;
@@ -240,17 +241,17 @@ void Network::convoluteBacwardFilter(const Layer& conv,
                       int& nO, int& cO, int& hO, int& wO,
                       value_type* diffData, value_type**gradData) {
 
-	checkCUDNN(cudnnSetTensor4dDescriptor(srcTensorDesc,
+  checkCUDNN(cudnnSetTensor4dDescriptor(srcTensorDesc,
                                             tensorFormat,
                                             dataType,
                                             nI, cI,
                                             hI, wI));
-	checkCUDNN(cudnnSetTensor4dDescriptor(diffTensorDesc,
+  checkCUDNN(cudnnSetTensor4dDescriptor(diffTensorDesc,
                                             tensorFormat,
                                             dataType,
                                             nO, cO,
                                             hO, wO));
-	 checkCUDNN(cudnnSetFilter4dDescriptor(filterGradDesc,
+   checkCUDNN(cudnnSetFilter4dDescriptor(filterGradDesc,
                                           dataType,
                                           conv.outputs,
                                           conv.inputs, 
@@ -261,41 +262,41 @@ void Network::convoluteBacwardFilter(const Layer& conv,
                                                 0,0, // padding
                                                 conv.stride,conv.stride, // stride
                                                 1,1, // upscale
-                                                CUDNN_CROSS_CORRELATION));	//OR CUDNN_CONVOLUTION
+                                                CUDNN_CROSS_CORRELATION));  //OR CUDNN_CONVOLUTION
     value_type alpha = value_type(1);
-    value_type beta  = value_type(1);	//accumulate filter gradients
+    value_type beta  = value_type(1); //accumulate filter gradients
     checkCUDNN(cudnnConvolutionBackwardFilter(cudnnHandle,
-    										&alpha,
-    										srcTensorDesc,
-    										srcData,
-    										diffTensorDesc,
-    										diffData,
-    										convDesc,
-    										&beta,
-    										filterGradDesc,
-    										*gradData));
+                        &alpha,
+                        srcTensorDesc,
+                        srcData,
+                        diffTensorDesc,
+                        diffData,
+                        convDesc,
+                        &beta,
+                        filterGradDesc,
+                        *gradData));
 }
 void Network::activationBackward(int& n, int& c, int& h, int& w,
                       value_type* srcData,
                       value_type* diffData, value_type* dstData, value_type**gradData) {
 
-	resize(n*c*h*w, gradData);
-	checkCUDNN(cudnnSetTensor4dDescriptor(srcTensorDesc,
+  resize(n*c*h*w, gradData);
+  checkCUDNN(cudnnSetTensor4dDescriptor(srcTensorDesc,
                                             tensorFormat,
                                             dataType,
                                             n, c,
                                             h, w));
-	checkCUDNN(cudnnSetTensor4dDescriptor(diffTensorDesc,
+  checkCUDNN(cudnnSetTensor4dDescriptor(diffTensorDesc,
                                             tensorFormat,
                                             dataType,
                                             n, c,
                                             h, w));
-	checkCUDNN(cudnnSetTensor4dDescriptor(dstTensorDesc,
+  checkCUDNN(cudnnSetTensor4dDescriptor(dstTensorDesc,
                                             tensorFormat,
                                             dataType,
                                             n, c,
                                             h, w));
-	checkCUDNN(cudnnSetTensor4dDescriptor(dataGradTensorDesc,
+  checkCUDNN(cudnnSetTensor4dDescriptor(dataGradTensorDesc,
                                             tensorFormat,
                                             dataType,
                                             n, c,
@@ -304,17 +305,17 @@ void Network::activationBackward(int& n, int& c, int& h, int& w,
     value_type alpha = value_type(1);
     value_type beta  = value_type(0);
     checkCUDNN(cudnnActivationBackward(cudnnHandle,
-    										CUDNN_ACTIVATION_RELU,
-    										&alpha,
-    										srcTensorDesc,
-    										srcData,
-    										diffTensorDesc,
-    										diffData,
-    										dstTensorDesc,
-    										dstData,
-    										&beta,
-    										dataGradTensorDesc,
-    										*gradData));
+                        CUDNN_ACTIVATION_RELU,
+                        &alpha,
+                        srcTensorDesc,
+                        srcData,
+                        diffTensorDesc,
+                        diffData,
+                        dstTensorDesc,
+                        dstData,
+                        &beta,
+                        dataGradTensorDesc,
+                        *gradData));
 }
 
 void Network::activationBackwardLeakyRELU(int& n, int& c, int& h, int& w,
@@ -324,4 +325,28 @@ void Network::activationBackwardLeakyRELU(int& n, int& c, int& h, int& w,
   dim3 threadsPerBlock(BLOCKSIZE);
   dim3 numBlocks((n*c*h*w-1)/threadsPerBlock.x + 1);
   leakyReluActivateBackward<<<numBlocks, threadsPerBlock>>>(diffData, *gradData, srcData, n*c*h*w, slope);
+}
+
+void Network::convoluteBackwardBias(int& n, int& c, int& h, int& w,
+                      value_type* srcData, value_type**gradData) {
+  resize(n*c*h*w, gradData);
+  checkCUDNN(cudnnSetTensor4dDescriptor(srcTensorDesc,
+                                            tensorFormat,
+                                            dataType,
+                                            n, c,
+                                            h, w));
+  checkCUDNN(cudnnSetTensor4dDescriptor(biasTensorDesc,
+                                            tensorFormat,
+                                            dataType,
+                                            1, c,
+                                            1, 1));
+  value_type alpha = value_type(1);
+  value_type beta  = value_type(1); //accumulate beta gradients
+  checkCUDNN(cudnnConvolutionBackwardBias(cudnnHandle,
+                                          &alpha,
+                                          srcTensorDesc,
+                                          srcData,
+                                          &beta,
+                                          biasTensorDesc,
+                                          *gradData));
 }

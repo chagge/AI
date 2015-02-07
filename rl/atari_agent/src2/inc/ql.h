@@ -64,6 +64,7 @@ class QL {
 		void saveGrayScrn();
 		double initSeq();
 		void resetInputToCNN();
+		void printInfile(std::ofstream&, float*, int);
 };
 
 #endif

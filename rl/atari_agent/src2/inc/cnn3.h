@@ -29,6 +29,8 @@ class CNN {
 		std::string dataPath;
 		float loss;
 		float prevLoss;
+		int numSteps;
+		int stepSize;
 	public:
 		CNN(std::string, float, float, std::string);
 		~CNN();

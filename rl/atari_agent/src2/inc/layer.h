@@ -6,9 +6,9 @@
 
 class Layer {
 	public:
-		value_type *h_data, *d_data, *d_hist_data;
+		value_type *h_data, *d_data, *d_hist_data, *d_hist_bias;
 		value_type *h_bias, *d_bias;
-		value_type *d_msq, *d_grad;
+		value_type *d_msq, *d_grad, *d_bias_msq, *d_grad_bias, *d_msq_grad_data, *d_msq_grad_bias;
 		int inputs;
 		int outputs;
 		int kernelDim;
@@ -29,6 +29,15 @@ class Layer {
 		void copyDataDTDH();
 		void copyDataDHTD();
 		void initHistData();
+		void initHistBias();
+		void initGradBias();
+		void resetGradBias();
+		void initMsqBias();
+		void resetMsqBias();
+		void initGradMsq();
+		void initGradMsqBias();
+		void resetMsqGrad();
+		void resetMsqGradBias();
 };
 
 #endif

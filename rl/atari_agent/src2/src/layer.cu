@@ -9,8 +9,9 @@ __global__ void updateGen(value_type *d_in, value_type *grad, value_type *msq, v
 		return;
 	value_type temp = grad[idx];
 	msq[idx] = (rho)*msq[idx] + (1-rho)*temp*temp;
-	value_type deltaX = -1.0*((1.0*sqrt(msqGrad[idx]+eps))*temp)/(1.0*sqrt(msq[idx] + eps));
-	msqGrad[idx] = (rho)*msqGrad[idx] + (1-rho)*deltaX*deltaX;
+	value_type deltaX = -1.0*alpha*(temp)/(1.0*sqrt(msq[idx]));
+	//value_type deltaX = -1.0*((1.0*sqrt(msqGrad[idx]+eps))*temp)/(1.0*sqrt(msq[idx] + eps));
+	//msqGrad[idx] = (rho)*msqGrad[idx] + (1-rho)*deltaX*deltaX;
 	d_in[idx] += deltaX;
 }
 
@@ -29,7 +30,8 @@ Layer::~Layer() {
 	checkCudaErrors(cudaFree(d_bias));
 	checkCudaErrors(cudaFree(d_msq));
 	checkCudaErrors(cudaFree(d_grad));
-	checkCudaErrors(cudaFree(d_bias_msq));
+	checkCudaErrors(cudaFree(d_grad_bias));
+	checkCudaErrors(cudaFree(d_msq_bias));
 	checkCudaErrors(cudaFree(d_msq_grad_bias));
 	checkCudaErrors(cudaFree(d_msq_grad_data));
 	checkCudaErrors(cudaFree(d_hist_data));
@@ -65,7 +67,7 @@ void Layer::initMsq() {
 void Layer::initMsqBias() {
 	int size = outputs;
 	int sizeInBytes = size*sizeof(value_type);
-	checkCudaErrors(cudaMalloc(&d_bias_msq, sizeInBytes));
+	checkCudaErrors(cudaMalloc(&d_msq_bias, sizeInBytes));
 }
 void Layer::initGradMsq() {
 	int size = inputs*outputs*kernelDim*kernelDim;
@@ -127,7 +129,7 @@ void Layer::resetMsq() {
 void Layer::resetMsqBias() {
 	int size = outputs;
 	int sizeInBytes = size*sizeof(value_type);
-	checkCudaErrors(cudaMemset(d_bias_msq, 0.0f, sizeInBytes));
+	checkCudaErrors(cudaMemset(d_msq_bias, 0.0f, sizeInBytes));
 }
 void Layer::resetMsqGrad() {
 	int size = inputs*outputs*kernelDim*kernelDim;
@@ -149,14 +151,15 @@ void Layer::resetGradBias() {
 	int sizeInBytes = size*sizeof(value_type);
 	checkCudaErrors(cudaMemset(d_grad_bias, 0.0f, sizeInBytes));
 }
-void Layer::update(value_type alpha, value_type gamma, int batchSize) {
+void Layer::update(value_type alpha, value_type gamma, int batchSize, bool biasUpdate) {
 	int size = inputs*outputs*kernelDim*kernelDim;
 	dim3 threadsPerBlock(BLOCKSIZE);
 	dim3 numBlocks((size-1)/threadsPerBlock.x + 1);
 	updateGen<<<numBlocks, threadsPerBlock>>>(d_data, d_grad, d_msq, d_msq_grad_data, alpha, gamma, size, batchSize, 0.000001f);
 	size = outputs;
 	dim3 numBlocks2((size-1)/threadsPerBlock.x + 1);
-	updateGen<<<numBlocks2, threadsPerBlock>>>(d_bias, d_grad_bias, d_bias_msq, d_msq_grad_bias, alpha, gamma, size, batchSize, 0.000001f);
+	if(biasUpdate)
+		updateGen<<<numBlocks2, threadsPerBlock>>>(d_bias, d_grad_bias, d_msq_bias, d_msq_grad_bias, alpha, gamma, size, batchSize, 0.000001f);
 }
 
 

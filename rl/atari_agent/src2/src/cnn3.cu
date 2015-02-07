@@ -183,7 +183,7 @@ void CNN::backwardProp(value_type *h_err) {
 	assert(tnnu == firstNNLayerUnits);
 	//update layers
 	for(int i = 0; i < numFltrLayer; ++i)
-		fltrLyr[i]->update(learnRate, gamma, miniBatchSize);
+		fltrLyr[i]->update(learnRate, gamma, miniBatchSize, true);
 	checkCudaErrors(cudaFree(diffData));
 	checkCudaErrors(cudaFree(gradData));
 }
@@ -319,10 +319,7 @@ void CNN::testIterate(int numIter) {
 	printHostVector(lastNNLayerUnits, targ);
 	learnRate = baseLearnRate;
 	prevLoss = -1.0f;
-	for(int i = 0; i < numIter; ++i) {
-		std::cout << "iter no.: " << i << std::endl;
-		step(testInput, targ);
-	}
+	learn(testInput, targ, numIter);
 	printHostVector(lastNNLayerUnits, targ);
 	std::cout << "Action chosen: " << std::endl;
 	std::cout << chooseAction(testInput, nnLayerDim[numNNLayer-1].z) << std::endl;

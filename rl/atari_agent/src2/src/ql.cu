@@ -56,7 +56,7 @@ void QL::setInputToCNN(int lst, int imgInd) {
 	int i = 0, cnt = (maxHistoryLen + lst - (numFrmStack-1))%maxHistoryLen;
 	while(i < numFrmStack) {
 		for(int j = 0; j < fMapSize; ++j) {
-			inputToCNN[imgInd*fMapSize*numFrmStack+i*fMapSize+j] = (1.0*grayScrnHist[cnt][j])/255.0-0.5;
+			inputToCNN[imgInd*fMapSize*numFrmStack+i*fMapSize+j] = (1.0*grayScrnHist[cnt][j])/255.0 - 0.5;
 		}
 		i++;
 		cnt = (cnt+1)%maxHistoryLen;

@@ -326,6 +326,8 @@ int CNN::argMaxQVal(int numAction) {
 }
 
 value_type* CNN::forwardNGetQVal(value_type *h_inpLayer) {
+	if(info.debugCNN)
+		cnnLog << "Forward AND Get QVAL" << std::endl;
 	resetNN();
 	resetQVals();
 	forwardProp(h_inpLayer);

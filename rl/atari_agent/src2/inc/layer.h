@@ -14,7 +14,8 @@ class Layer {
 		int kernelDim;
 		int stride;
 		value_type iRangeD, iRangeB;
-		Layer(int, int, int, int, value_type, value_type);
+		int actType;				// 0 == linear , 1 == relu, 2 == leaky relu
+		Layer(int, int, int, int, value_type, value_type, int);
 		~Layer();
 		void randInit(value_type**, value_type**, int, value_type);
 		void initData();

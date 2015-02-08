@@ -17,7 +17,7 @@ class Info{
 		bool toTrain;
 		int testAfterEveryNumEp;
 		int memThreshold;
-		std::string qlLogFile;
+		std::string qlLogFile, qlLogFile2;
 		float baseEpsilon;
 		int numLearnSteps;
 		int saveWtTimePer;

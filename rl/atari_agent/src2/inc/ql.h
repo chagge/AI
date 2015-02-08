@@ -34,6 +34,7 @@ class QL {
 		int fMapSize;
 		bool isRandom;
 		std::ofstream qlLog;
+		std::ofstream qlLog2;
 	public:
 		QL(Info x);
 		~QL();

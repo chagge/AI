@@ -148,7 +148,7 @@ void Interface::decodeInfo() {
 	}
 	curFrmScreen = lastFrmInfo.substr(0, v[2]+1);
 	curIsTerm = atoi(lastFrmInfo.substr(v[2]+1, v[1]-v[2]-1).c_str());
-	curRew = (atoi(lastFrmInfo.substr(v[1]+1, v[0]-v[1]-1).c_str())>0?1:0);
+	curRew = atoi(lastFrmInfo.substr(v[1]+1, v[0]-v[1]-1).c_str());
 	curFrmNum += 1;
 	curEpNumFrame +=1;
 	curEpNetRew += curRew;

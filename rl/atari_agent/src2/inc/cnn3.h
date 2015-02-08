@@ -64,6 +64,8 @@ class CNN {
 		void learn(value_type*, value_type*, int);
 		float getPrevLoss();
 		void resize(int, value_type**);
+		int getNumSteps();
+		float getLR();
 };
 
 #endif

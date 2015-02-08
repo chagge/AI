@@ -27,11 +27,11 @@ CNN::CNN(Info x) {
 
 	totalFltrUnits = 0;
 	for(int i = 0; i < numFltrLayer; ++i) {
-		int in, out, ker, stride;
+		int in, out, ker, stride, actType;
 		float irD, irB;
-		nnConfig >> in >> out >> ker >> stride >> irD >> irB;
+		nnConfig >> in >> out >> ker >> stride >> irD >> irB >> actType;
 		totalFltrUnits += in*out*ker*ker;
-		fltrLyr[i] = new Layer(in, out, ker, stride, irD, irB);
+		fltrLyr[i] = new Layer(in, out, ker, stride, irD, irB, actType);
 	}
 
 	nnConfig >> stepSize;
@@ -59,6 +59,7 @@ CNN::~CNN() {
 	delete[] nnLayerDim;
 	delete[] qVals;
 	checkCudaErrors(cudaFree(d_nn));
+	cnnLog.close();
 }
 
 void CNN::resize(int size, value_type **data) {
@@ -142,9 +143,9 @@ void CNN::printNNLayerDim() {
 void CNN::printFltrLayerAttr() {
 	cnnLog << "Filter Layer Attributes: " << std::endl;
 	for (int i = 0; i < numFltrLayer; ++i) {
-		int k = fltrLyr[i]->outputs, c = fltrLyr[i]->inputs, c1 = fltrLyr[i]->kernelDim, h = fltrLyr[i]->stride;
+		int k = fltrLyr[i]->outputs, c = fltrLyr[i]->inputs, c1 = fltrLyr[i]->kernelDim, h = fltrLyr[i]->stride, aT = fltrLyr[i]->actType;
 		float w = fltrLyr[i]->iRangeD, u = fltrLyr[i]->iRangeB;
-		cnnLog << "outputs inputs kernelSz stride rangeD rangeB: " << i << " layer " << k << " " << c << " " << c1 << " " <<  h << " " << w << " " << u << std::endl;
+		cnnLog << "outputs inputs kernelSz stride rangeD rangeB actType: " << i << " layer " << k << " " << c << " " << c1 << " " <<  h << " " << w << " " << u << " " << aT << std::endl;
 	}
 }
 
@@ -163,12 +164,14 @@ void CNN::forwardProp(value_type *h_inpLayer) {
 	int tnnu = inputSize;
 	for(int i = 0; i < numFltrLayer; ++i) {
 		network->convoluteForward(*fltrLyr[i], n, c, h, w, srcData, &dstData, info.isBias);
-		if(i == numFltrLayer - 1) {
+		if(fltrLyr[i]->actType == 0) {	//linear
 			resize(n*c*h*w, &srcData);
 			checkCudaErrors(cudaMemcpyDTD(srcData, dstData, n*c*h*w*sizeof(value_type)));
-		}
-		else
+		} else if(fltrLyr[i]->actType == 1) {	//relu
+			network->activationForward(n, c, h, w, dstData, &srcData);
+		} else if(fltrLyr[i]->actType == 2) {	//leaky relu
 			network->activationForwardLeakyRELU(n, c, h, w, dstData, &srcData, negSlopeRelu);
+		}
 
 		assert(n*c*h*w == nnLayerDim[i+1].x*nnLayerDim[i+1].y*nnLayerDim[i+1].z*nnLayerDim[i+1].w);
 		//cpy to d_nn
@@ -206,16 +209,23 @@ void CNN::backwardProp(value_type *h_err) {
 	int tnnu = totalNNUnits - inputSize;
 	for(int i = numFltrLayer; i >= 1; --i) {
 		nI = nnLayerDim[i-1].w, cI = nnLayerDim[i-1].z, hI = nnLayerDim[i-1].x, wI = nnLayerDim[i-1].y;
-		if(i == numFltrLayer) {
+		if(fltrLyr[i-1]->actType == 0) {
 			resize(n*c*h*w, &gradData);
 			checkCudaErrors(cudaMemcpyDTD(gradData, diffData, n*c*h*w*sizeof(value_type)));
-		} else
+		} else if(fltrLyr[i-1]->actType == 1) {
+			network->activationBackward(n, c, h, w, 
+										d_nn + tnnu, 
+										diffData, 
+										d_nn + tnnu, 
+										&gradData);
+		} else if(fltrLyr[i-1]->actType == 2) {
 			network->activationBackwardLeakyRELU(n, c, h, w, 
 												d_nn + tnnu, 
 												diffData, 
 												d_nn + tnnu, 
 												&gradData, 
 												negSlopeRelu);
+		}
 		if(info.isBias)
 			network->convoluteBackwardBias(n, c, h, w, 
 											gradData, 
@@ -400,4 +410,12 @@ float CNN::getCurrentLoss() {
 
 float CNN::getPrevLoss() {
 	return prevLoss;
+}
+
+int CNN::getNumSteps() {
+	return numSteps;
+}
+
+float CNN::getLR() {
+	return baseLearnRate;
 }

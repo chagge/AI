@@ -47,8 +47,10 @@ QL::~QL() {
 	delete[] inputToCNN;
 	delete cnn;
 	dExp.clear();
-	if(info.debugQL)
+	if(info.debugQL) {
 		qlLog.close();
+		qlLog2.close();
+	}
 }
 
 void QL::run() {
@@ -60,13 +62,17 @@ void QL::run() {
 	while(!gameOver()) {
 
 		double score = playAnEpisode(info.toTrain);
-		if(info.debugQL)
-			qlLog << "EP No. " << interface->getCurEpNum() << " and score: " << score << " WF No. " << cnn->getCurWFNum() << std::endl;
-		
+		if(info.debugQL) {
+			qlLog << "Train: EP No. " << interface->getCurEpNum() << " and score: " << score << " WF No. " << cnn->getCurWFNum() << std::endl;
+			qlLog2 << "Train: EP No. " << interface->getCurEpNum() << " and score: " << score << " WF No. " << cnn->getCurWFNum() << std::endl;
+			qlLog2 << "Num steps Connet: " << cnn->getNumSteps() << " Learning rate: " << cnn->getLR() << std::endl;
+		}
 		if((interface->getCurEpNum())%info.testAfterEveryNumEp == 0 && info.toTrain) {
 			score = playAnEpisode(false);	//tests in training
-			if(info.debugQL)
-				qlLog << "Test: " << interface->getCurEpNum() << " and score: " << score << std::endl;
+			if(info.debugQL) {
+				qlLog << "Test: EP No. " << interface->getCurEpNum() << " and score: " << score << std::endl;
+				qlLog2 << "Test: EP No. " << interface->getCurEpNum() << " and score: " << score << " WF No. " << cnn->getCurWFNum() << std::endl;
+			}
 		}
 	}
 
@@ -85,6 +91,7 @@ void QL::init() {
 	//open file if info.debugQL is on
 	if(info.debugQL) {
 		qlLog.open(info.qlLogFile.c_str());
+		qlLog2.open(info.qlLogFile2.c_str());
 	}
 }
 
@@ -173,7 +180,7 @@ int QL::chooseAction(bool toTrain) {
 	if(numTimeLearnt > epsilonDecay || !toTrain)
 		epsilon = info.baseEpsilon;
 	else
-		epsilon = 1 - (1.0*numTimeLearnt)/(1.0*epsilonDecay);
+		epsilon = 1 - 0.9*((1.0*numTimeLearnt)/(1.0*epsilonDecay));
 
 	double rn = (1.0*rand())/(1.0*RAND_MAX);
 	if(rn < epsilon) {

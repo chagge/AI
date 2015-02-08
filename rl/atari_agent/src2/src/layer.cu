@@ -17,13 +17,14 @@ __global__ void updateGen(value_type *d_in, value_type *grad, value_type *msq, v
 	}
 }
 
-Layer::Layer(int inputs_, int outputs_, int kernelDim_, int stride_, value_type iRangeD_, value_type iRangeB_) {
+Layer::Layer(int inputs_, int outputs_, int kernelDim_, int stride_, value_type iRangeD_, value_type iRangeB_, int actType_) {
 	inputs = inputs_;
 	outputs = outputs_;
 	kernelDim = kernelDim_;
 	stride = stride_;
 	iRangeD = iRangeD_;
 	iRangeB = iRangeB_;
+	actType = actType_;
 }
 Layer::~Layer() {
 	delete[] h_data;
@@ -51,15 +52,9 @@ void Layer::randInit(value_type **h_dt, value_type **d_dt, int size, value_type 
 }
 void Layer::initData() {
 	randInit(&h_data, &d_data, inputs*outputs*kernelDim*kernelDim, iRangeD);
-	#ifdef TEST
-		std::cout << "Layer initData: done!" << std::endl;
-	#endif
 }
 void Layer::initBias() {
 	randInit(&h_bias, &d_bias, outputs, iRangeB);
-	#ifdef TEST
-		std::cout << "Layer initBias: done!" << std::endl;
-	#endif
 }
 void Layer::initMsq() {
 	int size = inputs*outputs*kernelDim*kernelDim;

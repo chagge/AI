@@ -41,6 +41,8 @@ class Info{
 		int maxNumFrame;
 		int resetButton;
 		int numFrmReset;
+		int cropHV;
+		int cropWV;
 		int cropH;
 		int cropW;
 		int cropL;

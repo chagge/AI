@@ -18,3 +18,6 @@ int main(int argc, char **argv) {
 	ql.run();
 	return 0;
 }
+
+
+//./ale -game_controller fifo_named -run_length_encoding false -disable_color_averaging true ../roms/breakout.bin 

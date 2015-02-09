@@ -26,6 +26,8 @@ Interface::Interface(Info info) {
 	cropW = info.cropW;
 	cropL = info.cropL;
 	cropT = info.cropT;
+	cropHV = info.cropHV;
+	cropWV = info.cropWV;
 	for(int i = 0; i < cropH; ++i) {
 		for(int j = 0; j < cropW; ++j) {
 			lastFrmGrayInfo.push_back(0);
@@ -198,10 +200,10 @@ int Interface::getCurFrameNum() {
 }
 
 void Interface::preProFrmString() {
-	double yRatio = (1.0*(ALE_HEIGHT-cropT))/(1.0*cropH);
-	double xRatio = (1.0*(ALE_WIDTH-cropL))/(1.0*cropW);
-	for(int i = 0; i < cropH; ++i) {
-		for(int j = 0; j < cropW; ++j) {
+	double yRatio = (1.0*(ALE_HEIGHT))/(1.0*cropHV);
+	double xRatio = (1.0*(ALE_WIDTH))/(1.0*cropWV);
+	for(int i = 0; i < cropHV; ++i) {
+		for(int j = 0; j < cropWV; ++j) {
 			int firstX = (int)(std::floor(j*xRatio));
 			int lastX = (int)(std::floor((j+1)*xRatio));
 			int firstY = (int)(std::floor(i*yRatio));
@@ -220,12 +222,13 @@ void Interface::preProFrmString() {
 						yRatioInResPixel = y + 1.0 - i*yRatio;
 					else if(y == lastY)
 						yRatioInResPixel = yRatio*(i+1)-y;
-					int grayscale = ntsc2gray(curFrmScreen[(y+cropT-1)*(2*ALE_WIDTH) + 2*(x+cropL)], curFrmScreen[(y+cropT-1)*(2*ALE_WIDTH) + 2*(x+cropL)+1]);
+					int grayscale = ntsc2gray(curFrmScreen[(y)*(2*ALE_WIDTH) + 2*(x)], curFrmScreen[(y)*(2*ALE_WIDTH) + 2*(x)+1]);
 					resColor += (xRatioInResPixel/xRatio)*(yRatioInResPixel/yRatio)*grayscale;
 				}
 			}
 			//myFrmFile << resColor << " ";
-			lastFrmGrayInfo[j+i*cropW] = resColor;
+			if(i >= cropT && i < (cropT + cropH) && j >= cropL && j < (cropL + cropW))
+				lastFrmGrayInfo[j-cropL+(i-cropT)*cropW] = resColor;
 		}
 		//myFrmFile << std::endl;
 	}

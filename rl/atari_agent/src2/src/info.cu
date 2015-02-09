@@ -93,6 +93,8 @@ void Info::decodeStuff() {
 	ale >> numLearnSteps;
 	ale >> saveWtTimePer;
 	ale >> miniBatchSize;
+	ale >> cropHV;
+	ale >> cropWV;
 	ale >> cropH;
 	ale >> cropW;
 	ale >> cropL;

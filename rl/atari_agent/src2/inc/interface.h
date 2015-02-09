@@ -26,6 +26,8 @@ class Interface {
 		int lastEpEndFrmNum;
 		int minEpFrmGap;
 		int numFrmStack;
+		int cropHV;
+		int cropWV;
 		int cropH;
 		int cropW;
 		int cropL;

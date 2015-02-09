@@ -1,0 +1,14 @@
+numNNLayer
+first_nn_layer_h   first_nn_layer_w   first_nn_layer_feature_maps   first_nn_layer_batch_size;
+filter_layer_1_inputs   outputs   kernel_dim   stride   std_dev_weights   bias_std_dev   activation_Type
+filter_layer_1_inputs   outputs   kernel_dim   stride   std_dev_weights   bias_std_dev   activation_Type
+filter_layer_1_inputs   outputs   kernel_dim   stride   std_dev_weights   bias_std_dev   activation_Type
+filter_layer_1_inputs   outputs   kernel_dim   stride   std_dev_weights   bias_std_dev   activation_Type
+.
+.
+filter_layer_(numNNLayer-1)_inputs   outputs   kernel_dim   stride   std_dev_weights   bias_std_dev   activation_Type
+stepSize
+baseLearnRate
+dropFactor
+rho
+negSlopeRelu

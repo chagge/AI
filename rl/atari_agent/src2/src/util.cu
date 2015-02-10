@@ -142,10 +142,10 @@ void printDeviceVectorInFile(int size, value_type *d_vec, std::ofstream& myFile)
     delete[] vec;
 }
 
-void printHostVectorInFile(int size, value_type *h_vec, std::ofstream& myFile) {
+void printHostVectorInFile(int size, value_type *h_vec, std::ofstream& myFile, std::string ending = " ") {
     for (int i = 0; i < size; i++)
     {
-        myFile << h_vec[i] << " ";
+        myFile << h_vec[i] << ending;
     }
     myFile << std::endl;
 }

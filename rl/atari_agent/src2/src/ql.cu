@@ -240,6 +240,11 @@ void QL::learnWts() {
 			qlLog << dExp[miniBatch[i]].act << "<==>" << dExp[miniBatch[i]].reward << ", ";
 		}
 		qlLog << std::endl;
+		if(numTimeLearnt < 1) {
+			std::ofstream myF("inputToCNNB.txt");
+			printHostVectorInfile(cnnInputSize, inputToCNN, myF, "\n");
+			myF.close();
+		}
 	}
 
 	float *targ = new float[miniBatchSize*numAction];
@@ -263,6 +268,11 @@ void QL::learnWts() {
 	if(info.debugQL) {
 		qlLog << "New predicted QVals: " << std::endl;
 		printInfile(qlLog, cnn->forwardNGetQVal(inputToCNN), miniBatchSize*numAction);
+		if(numTimeLearnt < 1) {
+			std::ofstream myF("inputToCNNA.txt");
+			printHostVectorInfile(cnnInputSize, inputToCNN, myF, "\n");
+			myF.close();
+		}
 	}
 
 	numTimeLearnt++;
@@ -281,7 +291,7 @@ void QL::setInputToCNN(int lst, int imgInd) {
 	int i = 0, cnt = (maxHistoryLen + lst - (numFrmStack-1))%maxHistoryLen;
 	while(i < numFrmStack) {
 		for(int j = 0; j < fMapSize; ++j) {
-			inputToCNN[imgInd*fMapSize*numFrmStack+i*fMapSize+j] = (1.0*grayScrnHist[cnt][j])/255.0 - 0.5;
+			inputToCNN[imgInd*fMapSize*numFrmStack+i*fMapSize+j] = (1.0*grayScrnHist[cnt][j])/255.0;
 		}
 		i++;
 		cnt = (cnt+1)%maxHistoryLen;

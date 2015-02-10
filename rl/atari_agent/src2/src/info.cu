@@ -10,7 +10,7 @@ Info::Info() {
 	debugQL = true;
 	toTrain = true;
 	qlLogFile = "qlLog.txt";
-	qlLogFile = "qlLog2.txt";
+	qlLogFile2 = "qlLog2.txt";
 	//for nn
 	debugCNN = true;
 	isBias = true;

@@ -70,6 +70,6 @@ double rand_normal(double, double);
 void printDeviceVector(int, value_type*);
 void printHostVector(int, value_type*);
 void printDeviceVectorInFile(int, value_type*, std::ofstream&);
-void printHostVectorInFile(int, value_type*, std::ofstream&, std::string x = " ");
+void printHostVectorInFile(int, value_type*, std::ofstream&, std::string);
 
 #endif

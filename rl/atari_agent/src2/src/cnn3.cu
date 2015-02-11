@@ -184,7 +184,7 @@ void CNN::forwardProp(value_type *h_inpLayer) {
     checkCudaErrors(cudaMemcpyDTH(qVals, srcData, lastNNLayerUnits*sizeof(value_type)));
     if(info.debugCNN) {
 		cnnLog << "qVals: " << std::endl;
-		printHostVectorInFile(lastNNLayerUnits, qVals, cnnLog);
+		printHostVectorInFile(lastNNLayerUnits, qVals, cnnLog, " ");
 	}
 
 	checkCudaErrors(cudaFree(srcData));
@@ -203,8 +203,10 @@ void CNN::backwardProp(value_type *h_err) {
 	checkCudaErrors(cudaMemcpyHTD(diffData, h_err, inputSize*sizeof(value_type)));
 
 	//reset all fltr layer gradient
-	for(int i = 0; i < numFltrLayer; ++i)
+	for(int i = 0; i < numFltrLayer; ++i) {
 		fltrLyr[i]->resetGrad();
+		fltrLyr[i]->resetGradBias();
+	}
 
 	int tnnu = totalNNUnits - inputSize;
 	for(int i = numFltrLayer; i >= 1; --i) {
@@ -373,7 +375,7 @@ void CNN::testIterate(int numIter) {
 	learn(testInput, targ, numIter);
 	if(info.debugCNN) {
 		cnnLog << "Target: " << std::endl;
-		printHostVectorInFile(lastNNLayerUnits, targ, cnnLog);
+		printHostVectorInFile(lastNNLayerUnits, targ, cnnLog, " ");
 	}
 
 	delete[] targ;

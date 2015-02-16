@@ -7,7 +7,7 @@
 class Layer {
 	public:
 		value_type *h_data, *d_data, *d_hist_data, *d_hist_bias;
-		value_type *h_bias, *d_bias;
+		value_type *h_bias, *d_bias, *bias_multiplier;
 		value_type *d_msq, *d_grad, *d_msq_bias, *d_grad_bias, *d_msq_grad_data, *d_msq_grad_bias;
 		int inputs;
 		int outputs;
@@ -15,7 +15,8 @@ class Layer {
 		int stride;
 		value_type iRangeD, iRangeB;
 		int actType;				// 0 == linear , 1 == relu, 2 == leaky relu
-		Layer(int, int, int, int, value_type, value_type, int);
+		int lType;					// 0 == ip, 1 == conv
+		Layer(int, int, int, int, value_type, value_type, int, int);
 		~Layer();
 		void randInit(value_type**, value_type**, int, value_type);
 		void initData();
@@ -39,6 +40,7 @@ class Layer {
 		void initGradMsqBias();
 		void resetMsqGrad();
 		void resetMsqGradBias();
+		void initBiasMultiplier();
 };
 
 #endif

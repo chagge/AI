@@ -6,11 +6,11 @@ ROOT_D := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 
 ifeq ($(CFG),debug)
 	CXXFLAGS= -O2 -g -DDEBUG -DROOT_DIR=\"$(ROOT_D)\" -I /home/student/dhruv/cudnn-6.5-linux-x64-v2-rc2 -arch sm_35
-	LDFLAGS= -g -DDEBUG -L /home/student/dhruv/cudnn-6.5-linux-x64-v2-rc2 -lcudnn
+	LDFLAGS= -g -DDEBUG -L /home/student/dhruv/cudnn-6.5-linux-x64-v2-rc2 -lcudnn -lcublas
 	EXEC=$(BINPATH)/ataridebug
 else
 	CXXFLAGS= -O2 -DROOT_DIR=\"$(ROOT_D)\" -I /home/student/dhruv/cudnn-6.5-linux-x64-v2-rc2 -arch sm_35
-	LDFLAGS= -L /home/student/dhruv/cudnn-6.5-linux-x64-v2-rc2 -lcudnn
+	LDFLAGS= -L /home/student/dhruv/cudnn-6.5-linux-x64-v2-rc2 -lcudnn -lcublas
 	EXEC=$(BINPATH)/atari 
 endif
 

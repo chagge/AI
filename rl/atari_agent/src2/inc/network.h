@@ -5,6 +5,7 @@
 #include "cudnn.h"
 #include "util.h"
 #include "layer.h"
+#include <cublas_v2.h>
 
 class Network {
 	private:
@@ -14,6 +15,7 @@ class Network {
 	    cudnnTensorDescriptor_t srcTensorDesc, dstTensorDesc, biasTensorDesc, dataGradTensorDesc, diffTensorDesc;
 	    cudnnFilterDescriptor_t filterDesc, filterGradDesc;
 	    cudnnConvolutionDescriptor_t convDesc;
+	    cublasHandle_t cublasHandle;
 	    void createHandles();
 	    void destroyHandles();
 	public:
@@ -28,7 +30,11 @@ class Network {
         void activationBackward(int&, int&, int&, int&,value_type*,value_type*, value_type*, value_type**);
         void activationForwardLeakyRELU(int, int, int, int, value_type*, value_type**, value_type);
 		void activationBackwardLeakyRELU(int&, int&, int&, int&,value_type*,value_type*, value_type*, value_type**, value_type);
-		void convoluteBackwardBias(int&, int&, int&, int&, value_type*, value_type**);
+		void convoluteBackwardBias(const Layer&, int&, int&, int&, int&, value_type*, value_type**);
+		void fullyConnectedForward(const Layer&, int&, int&, int&, int&, value_type*, value_type**, bool);
+		void fullyConnectedBacwardData(const Layer&, int&, int&, int&, int&, value_type*, int&, int&, int&, int&, value_type**);
+		void fullyConnectedBacwardFilter(const Layer&, int&, int&, int&, int&, value_type*, int&, int&, int&, int&, value_type*, value_type**);
+		void fullyConnectedBackwardBias(const Layer&, int&, int&, int&, int&, value_type*, value_type**);
 };
 
 #endif

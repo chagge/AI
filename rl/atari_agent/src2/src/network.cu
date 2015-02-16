@@ -2,6 +2,7 @@
 #include "network.h"
 #include "cudnn.h"
 #include "cudnn.h"
+#include <cublas_v2.h>
     
 __global__ void leakyReluActivateForward(value_type *d_in, value_type *d_out, int n, value_type slope) {
   int idx = threadIdx.x + blockIdx.x*blockDim.x;
@@ -31,6 +32,7 @@ void Network::createHandles() {
   checkCUDNN(cudnnCreateFilterDescriptor(&filterDesc));
   checkCUDNN(cudnnCreateFilterDescriptor(&filterGradDesc));
   checkCUDNN(cudnnCreateConvolutionDescriptor(&convDesc));
+  checkCudaErrors(cublasCreate(&cublasHandle));
 }
 
 void Network::destroyHandles() {
@@ -43,6 +45,7 @@ void Network::destroyHandles() {
     checkCUDNN(cudnnDestroyTensorDescriptor(dataGradTensorDesc));
     checkCUDNN(cudnnDestroyTensorDescriptor(diffTensorDesc));
     checkCUDNN(cudnnDestroy(cudnnHandle));
+    checkCudaErrors(cublasDestroy(cublasHandle));
 }
 
 
@@ -78,6 +81,36 @@ void Network::addBias(const cudnnTensorDescriptor_t& dstTensorDesc, const Layer&
                                   dstTensorDesc,
                                   data));
 }
+void Network::fullyConnectedForward(const Layer& ip,
+                          int& n, int& c, int& h, int& w,
+                          value_type* srcData, value_type** dstData, bool biasAdd) {
+    int dim_x = c*h*w;
+    int dim_y = ip.outputs;
+    
+
+    value_type alpha = value_type(1), beta = value_type(0);
+    // place bias into dstData
+    //if(biasAdd)
+      //checkCudaErrors(cudaMemcpy(*dstData, ip.d_bias, dim_y*sizeof(value_type), cudaMemcpyDeviceToDevice));
+    
+    checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T,
+                                  n, dim_y, dim_x,
+                                  &alpha,
+                                  srcData, n,
+                                  ip.d_data, dim_x,
+                                  &beta,
+                                  *dstData, n));
+    beta = value_type(1);
+    if(biasAdd)
+       checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
+                                  n, dim_y, 1,
+                                  &alpha,
+                                  ip.bias_multiplier, n,
+                                  ip.d_bias, 1,
+                                  &beta,
+                                  *dstData, n));
+    h = 1; w = 1; c = dim_y;
+}
 void Network::convoluteForward(const Layer& conv,
                   int& n, int& c, int& h, int& w,
                   value_type* srcData, value_type** dstData, bool biasAdd) {
@@ -107,6 +140,13 @@ void Network::convoluteForward(const Layer& conv,
                                             filterDesc,
                                             &n, &c, &h, &w));
 
+    //if fully connected layer
+    if(conv.lType == 0) {
+      resize(n*c*h*w, dstData);
+      fullyConnectedForward(conv, n, c, h, w, srcData, dstData, biasAdd);
+      return;
+    }
+
     checkCUDNN(cudnnSetTensor4dDescriptor(dstTensorDesc,
                                             tensorFormat,
                                             dataType,
@@ -122,6 +162,7 @@ void Network::convoluteForward(const Layer& conv,
                                             0,
                                             &algo
                                             ));
+
     resize(n*c*h*w, dstData);
     size_t sizeInBytes=0;
     void* workSpace=NULL;
@@ -195,6 +236,10 @@ void Network::convoluteBacwardData(const Layer& conv,
                       value_type* diffData,
                       int& nO, int& cO, int& hO, int& wO,
                       value_type** gradData) {
+  if(conv.lType == 0) {
+    fullyConnectedBacwardData(conv, nI, cI, hI, wI, diffData, nO, cO, hO, wO, gradData);
+    return;
+  }
   resize(nO*cO*hO*wO, gradData);
   checkCUDNN(cudnnSetTensor4dDescriptor(diffTensorDesc,
                                             tensorFormat,
@@ -240,7 +285,10 @@ void Network::convoluteBacwardFilter(const Layer& conv,
                       value_type* srcData,
                       int& nO, int& cO, int& hO, int& wO,
                       value_type* diffData, value_type**gradData) {
-
+  if(conv.lType == 0) {
+    fullyConnectedBacwardFilter(conv, nI, cI, hI, wI, srcData, nO, cO, hO, wO, diffData, gradData);
+    return;
+  }
   checkCUDNN(cudnnSetTensor4dDescriptor(srcTensorDesc,
                                             tensorFormat,
                                             dataType,
@@ -327,9 +375,13 @@ void Network::activationBackwardLeakyRELU(int& n, int& c, int& h, int& w,
   leakyReluActivateBackward<<<numBlocks, threadsPerBlock>>>(diffData, *gradData, srcData, n*c*h*w, slope);
 }
 
-void Network::convoluteBackwardBias(int& n, int& c, int& h, int& w,
+void Network::convoluteBackwardBias(const Layer& conv, int& n, int& c, int& h, int& w,
                       value_type* srcData, value_type**gradData) {
-  resize(n*c*h*w, gradData);
+  if(conv.lType == 0) {
+    fullyConnectedBackwardBias(conv, n, c, h, w, srcData, gradData);
+    return;
+  }
+  //resize(1*c*1*1, gradData);
   checkCUDNN(cudnnSetTensor4dDescriptor(srcTensorDesc,
                                             tensorFormat,
                                             dataType,
@@ -349,4 +401,56 @@ void Network::convoluteBackwardBias(int& n, int& c, int& h, int& w,
                                           &beta,
                                           biasTensorDesc,
                                           *gradData));
+}
+
+void Network::fullyConnectedBacwardData(const Layer& ip,
+                      int& nI, int& cI, int& hI, int& wI,
+                      value_type* diffData,
+                      int& nO, int& cO, int& hO, int& wO,
+                      value_type** gradData) {
+  resize(nO*cO*hO*wO, gradData);
+  int dim_x = cO*hO*wO;
+  int dim_y = ip.outputs;
+  value_type alpha = value_type(1), beta = value_type(0);
+  checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
+                                nO, dim_x, dim_y,
+                                &alpha,
+                                diffData, nI,
+                                ip.d_data, dim_x,
+                                &beta,
+                                *gradData, nO));
+  nI = nO;
+  cI = cO;
+  hI = hO;
+  wI = wO;
+
+}
+void Network::fullyConnectedBacwardFilter(const Layer& ip,
+                      int& nI, int& cI, int& hI, int& wI,
+                      value_type* srcData,
+                      int& nO, int& cO, int& hO, int& wO,
+                      value_type* diffData, value_type**gradData) {
+  int dim_x = cI*hI*wI;
+  int dim_y = ip.outputs;
+  value_type alpha = value_type(1), beta = value_type(0); 
+  checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
+                                dim_y, dim_x, nI,
+                                &alpha,
+                                diffData, nO,
+                                srcData, nI,
+                                &beta,
+                                *gradData, dim_x));
+}
+void Network::fullyConnectedBackwardBias(const Layer& ip, int& n, int& c, int& h, int& w,
+                      value_type* srcData, value_type**gradData) {
+  //resize(1*c*1*1, gradData);
+  int dim_y = ip.outputs;
+  value_type alpha = value_type(1), beta = value_type(0);
+  checkCudaErrors(cublasSgemv(cublasHandle, CUBLAS_OP_T,
+                                      n, dim_y,
+                                      &alpha,
+                                      srcData, n,
+                                      ip.bias_multiplier, dim_y,
+                                      &beta,
+                                      *gradData, dim_y));
 }

@@ -27,11 +27,11 @@ CNN::CNN(Info x) {
 
 	totalFltrUnits = 0;
 	for(int i = 0; i < numFltrLayer; ++i) {
-		int in, out, ker, stride, actType;
+		int in, out, ker, stride, actType, lType;
 		float irD, irB;
-		nnConfig >> in >> out >> ker >> stride >> irD >> irB >> actType;
+		nnConfig >> in >> out >> ker >> stride >> irD >> irB >> actType >> lType;
 		totalFltrUnits += in*out*ker*ker;
-		fltrLyr[i] = new Layer(in, out, ker, stride, irD, irB, actType);
+		fltrLyr[i] = new Layer(in, out, ker, stride, irD, irB, actType, lType);
 	}
 
 	nnConfig >> stepSize;
@@ -229,7 +229,7 @@ void CNN::backwardProp(value_type *h_err) {
 												negSlopeRelu);
 		}
 		if(info.isBias)
-			network->convoluteBackwardBias(n, c, h, w, 
+			network->convoluteBackwardBias(*fltrLyr[i-1], n, c, h, w, 
 											gradData, 
 											&(fltrLyr[i-1]->d_grad_bias));
 		network->convoluteBacwardFilter(*fltrLyr[i-1],

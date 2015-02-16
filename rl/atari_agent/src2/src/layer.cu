@@ -15,7 +15,7 @@ __global__ void updateGen(value_type *d_in, value_type *grad, value_type *msq, v
 	d_in[idx] += deltaX;
 }
 
-Layer::Layer(int inputs_, int outputs_, int kernelDim_, int stride_, value_type iRangeD_, value_type iRangeB_, int actType_) {
+Layer::Layer(int inputs_, int outputs_, int kernelDim_, int stride_, value_type iRangeD_, value_type iRangeB_, int actType_, int lType_) {
 	inputs = inputs_;
 	outputs = outputs_;
 	kernelDim = kernelDim_;
@@ -23,10 +23,12 @@ Layer::Layer(int inputs_, int outputs_, int kernelDim_, int stride_, value_type 
 	iRangeD = iRangeD_;
 	iRangeB = iRangeB_;
 	actType = actType_;
+	lType = lType_;
 }
 Layer::~Layer() {
 	delete[] h_data;
 	delete[] h_bias;
+	checkCudaErrors(cudaFree(bias_multiplier));
 	checkCudaErrors(cudaFree(d_data));
 	checkCudaErrors(cudaFree(d_bias));
 	checkCudaErrors(cudaFree(d_msq));
@@ -98,6 +100,18 @@ void Layer::initHistBias() {
 	checkCudaErrors(cudaMemcpyDTD(d_hist_bias, d_bias, size*sizeof(value_type)));
 }
 
+void Layer::initBiasMultiplier() {
+	int size = outputs;
+	int sizeInBytes = size*sizeof(value_type);
+	value_type *h_dt_ = new value_type[size];
+	checkCudaErrors(cudaMalloc((void**)&bias_multiplier, sizeInBytes));
+	for(int i = 0; i < size; ++i) {
+		h_dt_[i] = value_type(1);
+	}
+	checkCudaErrors(cudaMemcpyHTD(bias_multiplier, h_dt_, sizeInBytes));
+	delete[] h_dt_;
+}
+
 void Layer::init() {
 	initData();
 	initHistData();
@@ -115,6 +129,7 @@ void Layer::init() {
 	initGradMsqBias();
 	resetMsqGrad();
 	resetMsqGradBias();
+	initBiasMultiplier();
 }
 void Layer::resetMsq() {
 	int size = inputs*outputs*kernelDim*kernelDim;

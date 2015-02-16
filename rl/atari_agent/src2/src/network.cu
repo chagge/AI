@@ -97,19 +97,32 @@ void Network::fullyConnectedForward(const Layer& ip,
                                   n, dim_y, dim_x,
                                   &alpha,
                                   srcData, n,
-                                  ip.d_data, dim_x,
+                                  ip.d_data, dim_y,
                                   &beta,
                                   *dstData, n));
     beta = value_type(1);
+
+    int size = n;
+    value_type *bias_multiplier;
+    int sizeInBytes = size*sizeof(value_type);
+    value_type *h_dt_ = new value_type[size];
+    checkCudaErrors(cudaMalloc((void**)&bias_multiplier, sizeInBytes));
+    for(int i = 0; i < size; ++i) {
+      h_dt_[i] = value_type(1);
+    }
+    checkCudaErrors(cudaMemcpyHTD(bias_multiplier, h_dt_, sizeInBytes));
+    delete[] h_dt_;
+
     if(biasAdd)
        checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
                                   n, dim_y, 1,
                                   &alpha,
-                                  ip.bias_multiplier, n,
+                                  bias_multiplier, n,
                                   ip.d_bias, 1,
                                   &beta,
                                   *dstData, n));
     h = 1; w = 1; c = dim_y;
+    checkCudaErrors(cudaFree(bias_multiplier));
 }
 void Network::convoluteForward(const Layer& conv,
                   int& n, int& c, int& h, int& w,
@@ -412,13 +425,23 @@ void Network::fullyConnectedBacwardData(const Layer& ip,
   int dim_x = cO*hO*wO;
   int dim_y = ip.outputs;
   value_type alpha = value_type(1), beta = value_type(0);
+  //  here ip id dim_y X dim_X
   checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
+                                nO, dim_x, dim_y,
+                                &alpha,
+                                diffData, nI,
+                                ip.d_data, dim_y,
+                                &beta,
+                                *gradData, nO));
+  /*
+  checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T,
                                 nO, dim_x, dim_y,
                                 &alpha,
                                 diffData, nI,
                                 ip.d_data, dim_x,
                                 &beta,
                                 *gradData, nO));
+  */
   nI = nO;
   cI = cO;
   hI = hO;
@@ -433,24 +456,48 @@ void Network::fullyConnectedBacwardFilter(const Layer& ip,
   int dim_x = cI*hI*wI;
   int dim_y = ip.outputs;
   value_type alpha = value_type(1), beta = value_type(0); 
+  
   checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
                                 dim_y, dim_x, nI,
                                 &alpha,
                                 diffData, nO,
                                 srcData, nI,
                                 &beta,
+                                *gradData, dim_y));
+  /*
+  checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
+                                dim_x, dim_y, nI,
+                                &alpha,
+                                srcData, nI,
+                                diffData, nO,
+                                &beta,
                                 *gradData, dim_x));
+                                */
 }
 void Network::fullyConnectedBackwardBias(const Layer& ip, int& n, int& c, int& h, int& w,
                       value_type* srcData, value_type**gradData) {
   //resize(1*c*1*1, gradData);
   int dim_y = ip.outputs;
   value_type alpha = value_type(1), beta = value_type(0);
+
+  int size = n;
+  value_type *bias_multiplier;
+  int sizeInBytes = size*sizeof(value_type);
+  value_type *h_dt_ = new value_type[size];
+  checkCudaErrors(cudaMalloc((void**)&bias_multiplier, sizeInBytes));
+  for(int i = 0; i < size; ++i) {
+    h_dt_[i] = value_type(1);
+  }
+  checkCudaErrors(cudaMemcpyHTD(bias_multiplier, h_dt_, sizeInBytes));
+  delete[] h_dt_;
+
   checkCudaErrors(cublasSgemv(cublasHandle, CUBLAS_OP_T,
                                       n, dim_y,
                                       &alpha,
                                       srcData, n,
-                                      ip.bias_multiplier, dim_y,
+                                      bias_multiplier, 1,
                                       &beta,
-                                      *gradData, dim_y));
+                                      *gradData, 1));
+
+  checkCudaErrors(cudaFree(bias_multiplier));
 }

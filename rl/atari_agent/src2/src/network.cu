@@ -442,6 +442,7 @@ void Network::fullyConnectedBacwardData(const Layer& ip,
                                 &beta,
                                 *gradData, nO));
   */
+
   nI = nO;
   cI = cO;
   hI = hO;

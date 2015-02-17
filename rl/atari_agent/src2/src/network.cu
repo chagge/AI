@@ -425,7 +425,7 @@ void Network::fullyConnectedBacwardData(const Layer& ip,
   int dim_x = cO*hO*wO;
   int dim_y = ip.outputs;
   value_type alpha = value_type(1), beta = value_type(0);
-  //  here ip id dim_y X dim_X
+  
   checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
                                 nO, dim_x, dim_y,
                                 &alpha,
@@ -433,6 +433,7 @@ void Network::fullyConnectedBacwardData(const Layer& ip,
                                 ip.d_data, dim_y,
                                 &beta,
                                 *gradData, nO));
+  
   /*
   checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T,
                                 nO, dim_x, dim_y,
@@ -442,12 +443,10 @@ void Network::fullyConnectedBacwardData(const Layer& ip,
                                 &beta,
                                 *gradData, nO));
   */
-
   nI = nO;
   cI = cO;
   hI = hO;
   wI = wO;
-
 }
 void Network::fullyConnectedBacwardFilter(const Layer& ip,
                       int& nI, int& cI, int& hI, int& wI,
@@ -465,6 +464,7 @@ void Network::fullyConnectedBacwardFilter(const Layer& ip,
                                 srcData, nI,
                                 &beta,
                                 *gradData, dim_y));
+  
   /*
   checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
                                 dim_x, dim_y, nI,
@@ -473,7 +473,7 @@ void Network::fullyConnectedBacwardFilter(const Layer& ip,
                                 diffData, nO,
                                 &beta,
                                 *gradData, dim_x));
-                                */
+    */                            
 }
 void Network::fullyConnectedBackwardBias(const Layer& ip, int& n, int& c, int& h, int& w,
                       value_type* srcData, value_type**gradData) {
@@ -499,6 +499,7 @@ void Network::fullyConnectedBackwardBias(const Layer& ip, int& n, int& c, int& h
                                       bias_multiplier, 1,
                                       &beta,
                                       *gradData, 1));
+
 
   checkCudaErrors(cudaFree(bias_multiplier));
 }

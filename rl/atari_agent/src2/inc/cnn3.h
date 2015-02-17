@@ -66,6 +66,7 @@ class CNN {
 		void resize(int, value_type**);
 		int getNumSteps();
 		float getLR();
+		void printFilterInfo(int, std::string);
 };
 
 #endif

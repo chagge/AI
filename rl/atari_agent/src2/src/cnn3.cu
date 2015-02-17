@@ -206,6 +206,7 @@ void CNN::backwardProp(value_type *h_err) {
 	for(int i = 0; i < numFltrLayer; ++i) {
 		fltrLyr[i]->resetGrad();
 		fltrLyr[i]->resetGradBias();
+		printFilterInfo(i, "BEFORE");
 	}
 
 	int tnnu = totalNNUnits - inputSize;
@@ -252,11 +253,29 @@ void CNN::backwardProp(value_type *h_err) {
 	}
 	assert(tnnu == firstNNLayerUnits);
 	//update layers
-	for(int i = 0; i < numFltrLayer; ++i)
+	for(int i = 0; i < numFltrLayer; ++i) {
 		fltrLyr[i]->update(learnRate, rho, miniBatchSize, info.isBias);
+		printFilterInfo(i, "AFTER");
+	}
 
 	checkCudaErrors(cudaFree(diffData));
 	checkCudaErrors(cudaFree(gradData));
+}
+
+void CNN::printFilterInfo(int idx, std::string msg) {
+	cnnLog << "Filter " << idx << " " <<  msg << ": " << std::endl;
+	cnnLog << "Weights: " << std::endl;
+	printDeviceVectorInFile(fltrLyr[idx]->kernelDim*fltrLyr[idx]->kernelDim, fltrLyr[idx]->d_data, cnnLog);
+	cnnLog << "Weights grad: " << std::endl;
+	printDeviceVectorInFile(fltrLyr[idx]->kernelDim*fltrLyr[idx]->kernelDim, fltrLyr[idx]->d_grad, cnnLog);
+	cnnLog << "Weights msq: " << std::endl;
+	printDeviceVectorInFile(fltrLyr[idx]->kernelDim*fltrLyr[idx]->kernelDim, fltrLyr[idx]->d_msq, cnnLog);
+	cnnLog << "Bias: " << std::endl;
+	printDeviceVectorInFile(fltrLyr[idx]->outputs, fltrLyr[idx]->d_bias, cnnLog);
+	cnnLog << "Bias grad: " << std::endl;
+	printDeviceVectorInFile(fltrLyr[idx]->outputs, fltrLyr[idx]->d_grad_bias, cnnLog);
+	cnnLog << "Bias msq: " << std::endl;
+	printDeviceVectorInFile(fltrLyr[idx]->outputs, fltrLyr[idx]->d_msq_bias, cnnLog);
 }
 
 void CNN::learn(value_type *h_inpLayer, value_type *target, int mIter) {

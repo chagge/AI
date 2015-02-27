@@ -67,6 +67,10 @@ class CNN {
 		int getNumSteps();
 		float getLR();
 		void printFilterInfo(int, std::string);
+		void printAllFltrLyr();
+		void printAllNNLyr();
+		void testFunctionality();
+		void printAllFltrLyrGrad();
 };
 
 #endif

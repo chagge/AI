@@ -1,6 +1,6 @@
 //layer.h
-#ifndef __LAYER_H__
-#define __LAYER_H__
+#ifndef __CUDNN_CONV_LAYER_H__
+#define __CUDNN_CONV_LAYER_H__
 
 #include "util.h"
 

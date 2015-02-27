@@ -18,7 +18,7 @@ class Layer {
 		int lType;					// 0 == ip, 1 == conv
 		Layer(int, int, int, int, value_type, value_type, int, int);
 		~Layer();
-		void randInit(value_type**, value_type**, int, value_type, bool);
+		void randInit(value_type**, value_type**, int, value_type);
 		void initData();
 		void initBias();
 		void initMsq();
@@ -40,8 +40,6 @@ class Layer {
 		void initGradMsqBias();
 		void resetMsqGrad();
 		void resetMsqGradBias();
-		void rescaleWeights();
-		void rescaleBias();
 };
 
 #endif

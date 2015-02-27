@@ -80,6 +80,7 @@ void Network::addBias(const cudnnTensorDescriptor_t& dstTensorDesc, const Layer&
                                   &beta,
                                   dstTensorDesc,
                                   data));
+    sync_gpu<<<1,1>>>();
 }
 void Network::fullyConnectedForward(const Layer& ip,
                           int& n, int& c, int& h, int& w,
@@ -123,6 +124,7 @@ void Network::fullyConnectedForward(const Layer& ip,
                                   *dstData, n));
     h = 1; w = 1; c = dim_y;
     checkCudaErrors(cudaFree(bias_multiplier));
+    sync_gpu<<<1,1>>>();
 }
 void Network::convoluteForward(const Layer& conv,
                   int& n, int& c, int& h, int& w,
@@ -211,6 +213,7 @@ void Network::convoluteForward(const Layer& conv,
     {
       checkCudaErrors(cudaFree(workSpace));
     }
+    sync_gpu<<<1,1>>>();
 }
 void Network::activationForward(int n, int c, int h, int w, value_type* srcData, value_type** dstData)
 {
@@ -236,13 +239,15 @@ void Network::activationForward(int n, int c, int h, int w, value_type* srcData,
                                         srcData,
                                         &beta,
                                         dstTensorDesc,
-                                        *dstData));    
+                                        *dstData)); 
+    sync_gpu<<<1,1>>>();   
 }
 void Network::activationForwardLeakyRELU(int n, int c, int h, int w, value_type* srcData, value_type** dstData, value_type slope) {
   resize(n*c*h*w, dstData);
   dim3 threadsPerBlock(BLOCKSIZE);
   dim3 numBlocks((n*c*h*w-1)/threadsPerBlock.x + 1);
   leakyReluActivateForward<<<numBlocks, threadsPerBlock>>>(srcData, *dstData, n*c*h*w, slope);
+  sync_gpu<<<1,1>>>();
 }
 void Network::convoluteBacwardData(const Layer& conv,
                       int& nI, int& cI, int& hI, int& wI,
@@ -292,6 +297,7 @@ void Network::convoluteBacwardData(const Layer& conv,
     cI = cO;
     hI = hO;
     wI = wO;
+    sync_gpu<<<1,1>>>();
 }
 void Network::convoluteBacwardFilter(const Layer& conv,
                       int& nI, int& cI, int& hI, int& wI,
@@ -336,6 +342,7 @@ void Network::convoluteBacwardFilter(const Layer& conv,
                         &beta,
                         filterGradDesc,
                         *gradData));
+    sync_gpu<<<1,1>>>();
 }
 void Network::activationBackward(int& n, int& c, int& h, int& w,
                       value_type* srcData,
@@ -377,6 +384,7 @@ void Network::activationBackward(int& n, int& c, int& h, int& w,
                         &beta,
                         dataGradTensorDesc,
                         *gradData));
+    sync_gpu<<<1,1>>>();
 }
 
 void Network::activationBackwardLeakyRELU(int& n, int& c, int& h, int& w,
@@ -386,6 +394,7 @@ void Network::activationBackwardLeakyRELU(int& n, int& c, int& h, int& w,
   dim3 threadsPerBlock(BLOCKSIZE);
   dim3 numBlocks((n*c*h*w-1)/threadsPerBlock.x + 1);
   leakyReluActivateBackward<<<numBlocks, threadsPerBlock>>>(diffData, *gradData, srcData, n*c*h*w, slope);
+  sync_gpu<<<1,1>>>();
 }
 
 void Network::convoluteBackwardBias(const Layer& conv, int& n, int& c, int& h, int& w,
@@ -414,6 +423,7 @@ void Network::convoluteBackwardBias(const Layer& conv, int& n, int& c, int& h, i
                                           &beta,
                                           biasTensorDesc,
                                           *gradData));
+  sync_gpu<<<1,1>>>();
 }
 
 void Network::fullyConnectedBacwardData(const Layer& ip,
@@ -425,7 +435,7 @@ void Network::fullyConnectedBacwardData(const Layer& ip,
   int dim_x = cO*hO*wO;
   int dim_y = ip.outputs;
   value_type alpha = value_type(1), beta = value_type(0);
-  
+  /*
   checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
                                 nO, dim_x, dim_y,
                                 &alpha,
@@ -433,8 +443,8 @@ void Network::fullyConnectedBacwardData(const Layer& ip,
                                 ip.d_data, dim_y,
                                 &beta,
                                 *gradData, nO));
+  */
   
-  /*
   checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T,
                                 nO, dim_x, dim_y,
                                 &alpha,
@@ -442,11 +452,12 @@ void Network::fullyConnectedBacwardData(const Layer& ip,
                                 ip.d_data, dim_x,
                                 &beta,
                                 *gradData, nO));
-  */
+  
   nI = nO;
   cI = cO;
   hI = hO;
   wI = wO;
+  sync_gpu<<<1,1>>>();
 }
 void Network::fullyConnectedBacwardFilter(const Layer& ip,
                       int& nI, int& cI, int& hI, int& wI,
@@ -456,7 +467,7 @@ void Network::fullyConnectedBacwardFilter(const Layer& ip,
   int dim_x = cI*hI*wI;
   int dim_y = ip.outputs;
   value_type alpha = value_type(1), beta = value_type(0); 
-  
+  /*
   checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
                                 dim_y, dim_x, nI,
                                 &alpha,
@@ -464,8 +475,8 @@ void Network::fullyConnectedBacwardFilter(const Layer& ip,
                                 srcData, nI,
                                 &beta,
                                 *gradData, dim_y));
+  */
   
-  /*
   checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
                                 dim_x, dim_y, nI,
                                 &alpha,
@@ -473,8 +484,10 @@ void Network::fullyConnectedBacwardFilter(const Layer& ip,
                                 diffData, nO,
                                 &beta,
                                 *gradData, dim_x));
-    */                            
+  sync_gpu<<<1,1>>>();
+                               
 }
+
 void Network::fullyConnectedBackwardBias(const Layer& ip, int& n, int& c, int& h, int& w,
                       value_type* srcData, value_type**gradData) {
   //resize(1*c*1*1, gradData);
@@ -502,4 +515,5 @@ void Network::fullyConnectedBackwardBias(const Layer& ip, int& n, int& c, int& h
 
 
   checkCudaErrors(cudaFree(bias_multiplier));
+  sync_gpu<<<1,1>>>();
 }

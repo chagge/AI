@@ -440,3 +440,68 @@ int CNN::getNumSteps() {
 float CNN::getLR() {
 	return baseLearnRate;
 }
+
+void CNN::printAllFltrLyr() {
+	for(int i = 0; i < numFltrLayer; ++i) {
+		std::cout << "weights " << i << ": " << std::endl;
+		int size = fltrLyr[i]->kernelDim*fltrLyr[i]->kernelDim*fltrLyr[i]->inputs*fltrLyr[i]->outputs;
+		printDeviceVector(size, fltrLyr[i]->d_data);
+		std::cout << "bias " << i << ": " << std::endl;
+		size = fltrLyr[i]->outputs;
+		printDeviceVector(size, fltrLyr[i]->d_bias);
+	}
+	std::cout << std::endl;
+}
+
+void CNN::printAllFltrLyrGrad() {
+	for(int i = 0; i < numFltrLayer; ++i) {
+		std::cout << "weights " << i << ": " << std::endl;
+		int size = fltrLyr[i]->kernelDim*fltrLyr[i]->kernelDim*fltrLyr[i]->inputs*fltrLyr[i]->outputs;
+		printDeviceVector(size, fltrLyr[i]->d_grad);
+		std::cout << "bias " << i << ": " << std::endl;
+		size = fltrLyr[i]->outputs;
+		printDeviceVector(size, fltrLyr[i]->d_grad_bias);
+	}
+	std::cout << std::endl;
+}
+
+void CNN::printAllNNLyr() {
+	int size = 0;
+	for(int i = 0; i < numNNLayer; ++i) {
+		std::cout << "nnlayer " << i << ": " << std::endl;
+		int sz = nnLayerDim[i].x*nnLayerDim[i].y*nnLayerDim[i].w*nnLayerDim[i].z;
+		printDeviceVector(sz, d_nn+size);
+		size += sz;
+	}
+}
+
+void CNN::testFunctionality() {
+	std::cout << "Filter: " << std::endl;
+	printAllFltrLyr();
+	value_type *h_inp = new value_type[firstNNLayerUnits];
+	for(int i = 0; i < firstNNLayerUnits; ++i) {
+		h_inp[i] = rand_normal(0, 1);
+	}
+	std::cout << "input: " << std::endl;
+	printHostVector(firstNNLayerUnits, h_inp);
+	forwardProp(h_inp);
+	std::cout << "nn layers: " << std::endl;
+	printAllNNLyr();
+	value_type *targ = new value_type[lastNNLayerUnits];
+	for(int i = 0; i < lastNNLayerUnits; ++i) {
+		targ[i] = rand_normal(0, 1);
+	}
+	std::cout << "target: " << std::endl;
+	printHostVector(lastNNLayerUnits, targ);
+	for(int i = 0; i < lastNNLayerUnits; ++i) {
+		targ[i] = -1*(targ[i] - qVals[i]);
+	}
+	learnRate = baseLearnRate;
+	std::cout << "err: " << std::endl;
+	printHostVector(lastNNLayerUnits, targ);
+	backwardProp(targ);
+	std::cout << "Filter Grads: " << std::endl;
+	printAllFltrLyrGrad();
+	std::cout << "Filter: " << std::endl;
+	printAllFltrLyr();
+}

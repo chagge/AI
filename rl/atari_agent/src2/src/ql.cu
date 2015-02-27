@@ -118,7 +118,11 @@ double QL::playAnEpisode(bool toTrain) {
 		}
 
 		int toAct = chooseAction(toTrain);
+		if(info.debugQL)
+			qlLog << "Action chosen." << std::endl;
 		double lastScore = repeatLastAction(ind2Act[toAct], numFrmStack, toTrain);
+		if(info.debugQL)
+			qlLog << "Action repeated." << std::endl;
 		epScore += lastScore;
 		int reward = 0;
 		if(lastScore != 0.0f) {
@@ -242,7 +246,7 @@ void QL::learnWts() {
 		qlLog << std::endl;
 		if(numTimeLearnt < 1) {
 			std::ofstream myF("inputToCNNB.txt");
-			printHostVectorInfile(cnnInputSize, inputToCNN, myF, "\n");
+			printHostVectorInFile(cnnInputSize, inputToCNN, myF, "\n");
 			myF.close();
 		}
 	}
@@ -270,7 +274,7 @@ void QL::learnWts() {
 		printInfile(qlLog, cnn->forwardNGetQVal(inputToCNN), miniBatchSize*numAction);
 		if(numTimeLearnt < 1) {
 			std::ofstream myF("inputToCNNA.txt");
-			printHostVectorInfile(cnnInputSize, inputToCNN, myF, "\n");
+			printHostVectorInFile(cnnInputSize, inputToCNN, myF, "\n");
 			myF.close();
 		}
 	}

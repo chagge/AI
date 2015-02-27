@@ -18,7 +18,6 @@
 
 typedef float value_type;
 
-__global__ void sync_gpu();
 
 #define cudaMemcpyHTD(dest, src, nBytes) cudaMemcpy(dest, src, nBytes, cudaMemcpyHostToDevice)
 #define cudaMemcpyDTH(dest, src, nBytes) cudaMemcpy(dest, src, nBytes, cudaMemcpyDeviceToHost)

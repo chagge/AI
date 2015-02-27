@@ -4,8 +4,11 @@
 #include "ql.h"
 #include "interface.h"
 #include <iostream>
+#include <time.h>
+#include "cnn3.h"
 
 int main(int argc, char **argv) {
+	srand(time(NULL));
 	Info info;
 	info.parseArg(argc, argv);
 	info.decodeStuff();
@@ -16,6 +19,8 @@ int main(int argc, char **argv) {
 
 	QL ql(info);
 	ql.run();
+	//CNN cnn(info);
+	//cnn.testFunctionality();
 	return 0;
 }
 

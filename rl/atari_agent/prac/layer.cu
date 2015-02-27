@@ -1,10 +1,6 @@
 //layer.cu
 #include "util.h" //norm rand cudamemcpyhtd checkcudaerrors
 #include "layer.h"
-#include <thrust/device_vector.h>
-#include <thrust/inner_product.h>
-#include <thrust/transform.h>
-#include <thrust/functional.h>
 #include <cmath>
 
 __global__ void updateGen(value_type *d_in, value_type *grad, value_type *msq, value_type *msqGrad, value_type alpha, value_type rho, int n, int batchSize, float eps) {
@@ -14,14 +10,9 @@ __global__ void updateGen(value_type *d_in, value_type *grad, value_type *msq, v
 	msq[idx] = 0.0f;
 	value_type temp = grad[idx];
 	msq[idx] = (rho)*msq[idx] + (1-rho)*temp*temp;
-	if(temp == 0.0f)
-		return;
-	value_type temp2 = (temp)/(1.0*sqrt((1-rho)*temp*temp));
-	value_type deltaX = -1.0*alpha*temp2;
+	value_type deltaX = -1.0*alpha*(temp)/(1.0*sqrt(msq[idx] + eps));
 	//value_type deltaX = -1.0*((1.0*sqrt(msqGrad[idx]+eps))*temp)/(1.0*sqrt(msq[idx] + eps));
 	//msqGrad[idx] = (rho)*msqGrad[idx] + (1-rho)*deltaX*deltaX;
-	//if(d_in[idx] > 100.0f || abs(deltaX) > 100.0f)
-	//printf("%f %f %f\n", deltaX, temp2, eps);
 	d_in[idx] += deltaX;
 }
 
@@ -50,24 +41,20 @@ Layer::~Layer() {
 	checkCudaErrors(cudaFree(d_hist_bias));
 
 }
-void Layer::randInit(value_type **h_dt, value_type **d_dt, int size, value_type irange, bool isFixedInit) {
+void Layer::randInit(value_type **h_dt, value_type **d_dt, int size, value_type irange) {
 	int sizeInBytes = size*sizeof(value_type);
 	*h_dt = new value_type[size];
 	checkCudaErrors(cudaMalloc(d_dt, sizeInBytes));
 	for(int i = 0; i < size; ++i) {
-		if(isFixedInit) {
-			(*h_dt)[i] = value_type(irange);
-		} else {
-			(*h_dt)[i] = value_type(rand_normal(0, 1)*irange);
-		}
+		(*h_dt)[i] = value_type(rand_normal(0, irange));
 	}
 	checkCudaErrors(cudaMemcpyHTD(*d_dt, *h_dt, sizeInBytes));
 }
 void Layer::initData() {
-	randInit(&h_data, &d_data, inputs*outputs*kernelDim*kernelDim, iRangeD, 0);
+	randInit(&h_data, &d_data, inputs*outputs*kernelDim*kernelDim, iRangeD);
 }
 void Layer::initBias() {
-	randInit(&h_bias, &d_bias, outputs, iRangeB, 1);
+	randInit(&h_bias, &d_bias, outputs, iRangeB);
 }
 void Layer::initMsq() {
 	int size = inputs*outputs*kernelDim*kernelDim;
@@ -170,30 +157,8 @@ void Layer::update(value_type alpha, value_type gamma, int batchSize, bool biasU
 	dim3 numBlocks2((size-1)/threadsPerBlock.x + 1);
 	if(biasUpdate)
 		updateGen<<<numBlocks2, threadsPerBlock>>>(d_bias, d_grad_bias, d_msq_bias, d_msq_grad_bias, alpha, gamma, size, batchSize, 0.000001f);
-	sync_gpu<<<1,1>>>();
-	//if(lType == 0) {
-	//	rescaleWeights();
-	//	rescaleBias();
-	//}
 }
 
-void Layer::rescaleWeights() {
-	thrust::device_ptr<float> d_x = thrust::device_pointer_cast(d_data);
-	float norm = std::sqrt(thrust::inner_product(d_x, d_x+inputs*outputs*kernelDim*kernelDim, d_x, 0.0f));
-	//norm = norm / std::sqrt(inputs*outputs*kernelDim*kernelDim);	//rms
-	norm = std::max(1.0f, norm);
-	using namespace thrust::placeholders;
-  	thrust::transform(d_x, d_x+inputs*outputs*kernelDim*kernelDim, d_x, _1 /= norm);
-}
-
-void Layer::rescaleBias() {
-	thrust::device_ptr<float> d_x = thrust::device_pointer_cast(d_bias);
-	float norm = std::sqrt(thrust::inner_product(d_x, d_x+outputs, d_x, 0.0f));
-	//norm = norm / std::sqrt(outputs);	//rms
-	norm = std::max(1.0f, norm);
-	using namespace thrust::placeholders;
-  	thrust::transform(d_x, d_x+outputs, d_x, _1 /= norm);
-}
 
 void Layer::copyDataDTH() {
 	int size = inputs*outputs*kernelDim*kernelDim;

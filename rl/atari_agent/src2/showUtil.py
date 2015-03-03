@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import sys
 
-for kk in range(0,1):
+for kk in range(0,32*4):
 	img = np.zeros((84, 84), np.float32)
 	for u in range(84):
 		for v in range(84):

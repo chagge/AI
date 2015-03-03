@@ -22,7 +22,7 @@ QL::QL(Info x) {
 	interface = new Interface(info);
 	//cnn = new CNN(x);
 	miniBatch = new int[miniBatchSize];
-	grayScrnHist = new std::vector<int>[maxHistoryLen];
+	//grayScrnHist = new std::array<FrameDataSp, 1>[maxHistoryLen];
 	
 	virtNumTransSaved = 0;
 	lastHistInd = 0;
@@ -30,25 +30,25 @@ QL::QL(Info x) {
 
 	//garbage vals
 	isRandom = false;
-
+	google::InitGoogleLogging("atari");
+  google::InstallFailureSignalHandler();
+  google::LogToStderr();
+	caffe::Caffe::set_mode(caffe::Caffe::GPU);
 	caff = new CAFF();
 	caff->Initialize("dqn_solver.prototxt");
 
 	//fMapSize = cnn->getInputFMSize();
 	fMapSize = 84*84;	//hardcoded
 	cnnInputSize = fMapSize * miniBatchSize * numFrmStack;
-	inputToCNN = new float[cnnInputSize];
+	//inputToCNN = new float[cnnInputSize];
 }
 
 QL::~QL() {
 	delete[] miniBatch;
 	delete interface;
 	ind2Act.clear();
-	for(int i = 0; i < maxHistoryLen; ++i) {
-		grayScrnHist[i].clear();
-	}
-	delete[] grayScrnHist;
-	delete[] inputToCNN;
+	//delete[] grayScrnHist;
+	//delete[] inputToCNN;
 	//delete cnn;
 	dExp.clear();
 	if(info.debugQL) {
@@ -113,7 +113,6 @@ double QL::playAnEpisode(bool toTrain) {
 		qlLog << "Episode No.: " << interface->getCurEpNum() << std::endl;
 
 	while(!gameOver() && !interface->isTerminal()) {
-
 		if(info.debugQL)
 			qlLog << "Frame No.: " << frameNum << std::endl;
 
@@ -175,7 +174,12 @@ double QL::playAction(int x) {
 }
 
 void QL::saveGrayScrn() {
-	grayScrnHist[lastHistInd%maxHistoryLen] = interface->getGrayScrn();
+	if(grayScrnHist.size() >= maxHistoryLen) {
+		grayScrnHist.pop_front();
+	} else {
+		grayScrnHist.push_back(interface->getGrayScrn());
+	}
+	//grayScrnHist[lastHistInd%maxHistoryLen] = interface->getGrayScrn();
 	lastHistInd = (lastHistInd+1)%maxHistoryLen;
 }
 
@@ -234,13 +238,12 @@ void QL::learnWts() {
 	for(int i = 0; i < miniBatchSize; ++i) {
 		setInputToCNN(dExp[miniBatch[i]].fiJN, i);
 	}
-
 	//float *qVals = cnn->forwardNGetQVal(inputToCNN);
 	float *qVals = caff->forwardNGetQVal(inputToCNN);
 	if(info.debugQL) {
 		qlLog << "Learn iter no.: " << numTimeLearnt << std::endl;
 		qlLog << "Predicted QVals: " << std::endl;
-		printInfile(qlLog, qVals, miniBatchSize*numAction);
+		//printInfile(qlLog, qVals, miniBatchSize*numAction);
 		qlLog << "Action and Rewards in miniBatch: " << std::endl;
 		for(int i = 0; i < miniBatchSize; ++i) {
 			qlLog << dExp[miniBatch[i]].act << "<==>" << dExp[miniBatch[i]].reward << ", ";
@@ -248,15 +251,17 @@ void QL::learnWts() {
 		qlLog << std::endl;
 		if(numTimeLearnt < 1) {
 			std::ofstream myF("inputToCNNB.txt");
-			printHostVectorInFile(cnnInputSize, inputToCNN, myF, "\n");
+			//printHostVectorInFile(cnnInputSize, inputToCNN, myF, "\n");
 			myF.close();
 		}
 	}
 
-	float *targ = new float[miniBatchSize*numAction];
-	float *filterInp = new float[miniBatchSize*numAction];
-	memset(targ, 0, miniBatchSize*numAction*sizeof(float));
-	memset(filterInp, 0, miniBatchSize*numAction*sizeof(float));
+	TargetLayerInputData targ;
+	std::fill(targ.begin(), targ.end(), 0.0f);
+	FilterLayerInputData filterInp;
+	std::fill(filterInp.begin(), filterInp.end(), 0.0f);
+	//memset(targ, 0, miniBatchSize*numAction*sizeof(float));
+	//memset(filterInp, 0, miniBatchSize*numAction*sizeof(float));
 	prepareTarget(targ, qVals);
 
 	for(int i = 0; i < miniBatchSize; ++i) {
@@ -267,7 +272,7 @@ void QL::learnWts() {
 
 	if(info.debugQL) {
 		qlLog << "Target was: " << std::endl;
-		printInfile(qlLog, targ, miniBatchSize*numAction);
+		//printInfile(qlLog, targ, miniBatchSize*numAction);
 	}
 
 	resetInputToCNN();
@@ -285,7 +290,7 @@ void QL::learnWts() {
 		//printInfile(qlLog, cnn->forwardNGetQVal(inputToCNN), miniBatchSize*numAction);
 		if(numTimeLearnt < 1) {
 			std::ofstream myF("inputToCNNA.txt");
-			printHostVectorInFile(cnnInputSize, inputToCNN, myF, "\n");
+			//printHostVectorInFile(cnnInputSize, inputToCNN, myF, "\n");
 			myF.close();
 		}
 	}
@@ -293,35 +298,37 @@ void QL::learnWts() {
 	numTimeLearnt++;
 	//if(numTimeLearnt%info.saveWtTimePer==0)
 		//cnn->saveFilterWts();
-	
-	delete[] targ;
-	delete[] filterInp;
 }
 
 void QL::resetInputToCNN() {
-	memset(inputToCNN, 0, cnnInputSize*sizeof(float));
+	//memset(inputToCNN, 0, cnnInputSize*sizeof(float));
+	std::fill(inputToCNN.begin(), inputToCNN.end(), 0.0f);
 }
 
 void QL::setInputToCNN(int lst, int imgInd) {
 	int i = 0, cnt = (maxHistoryLen + lst - (numFrmStack-1))%maxHistoryLen;
 	while(i < numFrmStack) {
+		/*
 		for(int j = 0; j < fMapSize; ++j) {
 			inputToCNN[imgInd*fMapSize*numFrmStack+i*fMapSize+j] = (1.0*grayScrnHist[cnt][j]);
 		}
+		*/
+		const auto& frame_data = grayScrnHist[cnt][0];
+		std::copy(frame_data->begin(), frame_data->end(), inputToCNN.begin()+imgInd*fMapSize*numFrmStack+i*fMapSize);
 		i++;
 		cnt = (cnt+1)%maxHistoryLen;
 	}
 }
 
-void QL::printInfile(std::ofstream& myF, float *val, int sz) {
+void QL::printInfile(int sz, FramesLayerInputData val , std::ofstream& myF) {
 	for(int i = 0; i < sz; ++i) {
-		myF << val[i] << ", ";
+		myF << val[i] << "\n";
 	}
 	myF << std::endl;
 	myF << std::endl;
 }
 
-void QL::prepareTarget(float *targ, float *qVals) {
+void QL::prepareTarget(TargetLayerInputData& targ, float *qVals) {
 	//target will be zero for those actions which are not performed
 	//since we dont know how well would they have done
 	for(int i = 0; i < miniBatchSize; ++i) {

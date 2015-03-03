@@ -1,10 +1,6 @@
 //layer.cu
 #include "util.h" //norm rand cudamemcpyhtd checkcudaerrors
 #include "layer.h"
-#include <thrust/device_vector.h>
-#include <thrust/inner_product.h>
-#include <thrust/transform.h>
-#include <thrust/functional.h>
 #include <cmath>
 
 __global__ void updateGen(value_type *d_in, value_type *grad, value_type *msq, value_type *msqGrad, value_type alpha, value_type rho, int n, int batchSize, float eps) {
@@ -18,6 +14,7 @@ __global__ void updateGen(value_type *d_in, value_type *grad, value_type *msq, v
 		return;
 	value_type temp2 = (temp)/(1.0*sqrt((1-rho)*temp*temp));
 	value_type deltaX = -1.0*alpha*temp2;
+	grad[idx]=deltaX;
 	//value_type deltaX = -1.0*((1.0*sqrt(msqGrad[idx]+eps))*temp)/(1.0*sqrt(msq[idx] + eps));
 	//msqGrad[idx] = (rho)*msqGrad[idx] + (1-rho)*deltaX*deltaX;
 	//if(d_in[idx] > 100.0f || abs(deltaX) > 100.0f)
@@ -171,29 +168,8 @@ void Layer::update(value_type alpha, value_type gamma, int batchSize, bool biasU
 	if(biasUpdate)
 		updateGen<<<numBlocks2, threadsPerBlock>>>(d_bias, d_grad_bias, d_msq_bias, d_msq_grad_bias, alpha, gamma, size, batchSize, 0.000001f);
 	sync_gpu<<<1,1>>>();
-	//if(lType == 0) {
-	//	rescaleWeights();
-	//	rescaleBias();
-	//}
 }
 
-void Layer::rescaleWeights() {
-	thrust::device_ptr<float> d_x = thrust::device_pointer_cast(d_data);
-	float norm = std::sqrt(thrust::inner_product(d_x, d_x+inputs*outputs*kernelDim*kernelDim, d_x, 0.0f));
-	//norm = norm / std::sqrt(inputs*outputs*kernelDim*kernelDim);	//rms
-	norm = std::max(1.0f, norm);
-	using namespace thrust::placeholders;
-  	thrust::transform(d_x, d_x+inputs*outputs*kernelDim*kernelDim, d_x, _1 /= norm);
-}
-
-void Layer::rescaleBias() {
-	thrust::device_ptr<float> d_x = thrust::device_pointer_cast(d_bias);
-	float norm = std::sqrt(thrust::inner_product(d_x, d_x+outputs, d_x, 0.0f));
-	//norm = norm / std::sqrt(outputs);	//rms
-	norm = std::max(1.0f, norm);
-	using namespace thrust::placeholders;
-  	thrust::transform(d_x, d_x+outputs, d_x, _1 /= norm);
-}
 
 void Layer::copyDataDTH() {
 	int size = inputs*outputs*kernelDim*kernelDim;
@@ -214,4 +190,23 @@ void Layer::copyDataDHTD() {
 	checkCudaErrors(cudaMemcpyDTD(d_data, d_hist_data, size*sizeof(value_type)));
 	size = outputs;
 	checkCudaErrors(cudaMemcpyDTD(d_bias, d_hist_bias, size*sizeof(value_type)));
+}
+
+void Layer::adaDelta(float rate, float wtDecay, std:string regType, ) {
+	if(wtDecay) {
+		if(regType == "L2") {
+		
+		} else if(regType == "L1") {
+		
+		}
+	}
+
+}
+
+void Layer::rmsProp() {
+
+}
+
+void Layer::rProp() {
+
 }

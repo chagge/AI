@@ -5,12 +5,13 @@
 #include "util.h"
 #include "info.h"
 #include "interface.h"
-#include "cnn3.h"
+//#include "cnn3.h"
 #include <map>
 #include <deque>
 #include <vector>
 #include <string>
 #include <fstream>
+#include "caff.h"
 
 class QL {
 	private:
@@ -20,7 +21,7 @@ class QL {
 		int numFrmStack;
 		std::map<int, int> ind2Act;
 		std::deque<History> dExp;	//transitions
-		std::vector<int> *grayScrnHist;
+		std::deque<InputFrames> grayScrnHist;
 		//CNN *cnn;
 		int lastHistInd;
 		int epsilonDecay;
@@ -29,7 +30,7 @@ class QL {
 		int miniBatchSize;
 		int *miniBatch;
 		int numTimeLearnt;
-		float *inputToCNN;
+		FramesLayerInputData inputToCNN;
 		int cnnInputSize;
 		int fMapSize;
 		bool isRandom;
@@ -52,10 +53,10 @@ class QL {
 		void saveHistory(History);
 		void getAMiniBatch();
 		void learnWts();
-		void printInfile(std::ofstream&, float*, int);
+		void printInfile(int sz, FramesLayerInputData val , std::ofstream& myF);
 		void resetInputToCNN();
 		void setInputToCNN(int, int);
-		void prepareTarget(float*, float*);
+		void prepareTarget(TargetLayerInputData&, float*);
 		void finalize();
 		void printParamInfo();
 };

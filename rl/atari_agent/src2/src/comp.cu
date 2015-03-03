@@ -1,505 +1,212 @@
-//network.cu
-#include "network.h"
-#include "cudnn.h"
-#include "cudnn.h"
-#include <cublas_v2.h>
-    
-__global__ void leakyReluActivateForward(value_type *d_in, value_type *d_out, int n, value_type slope) {
+//layer.cu
+#include "util.h" //norm rand cudamemcpyhtd checkcudaerrors
+#include "layer.h"
+#include <cmath>
+
+__global__ void updateGen(value_type *d_in, value_type *grad, value_type *msq, value_type *msqGrad, value_type alpha, value_type rho, int n, int batchSize, float eps) {
   int idx = threadIdx.x + blockIdx.x*blockDim.x;
-  if(idx >= n)
+  if(idx>=n)
     return;
-  d_out[idx] = d_in[idx];
-  if(d_in[idx]<=0)
-    d_out[idx] *= slope;
-}
-
-__global__ void leakyReluActivateBackward(value_type *d_in, value_type *d_out, value_type *d_z, int n, value_type slope) {
-  int idx = threadIdx.x + blockIdx.x*blockDim.x;
-  if(idx >= n)
+  msq[idx] = 0.0f;
+  value_type temp = grad[idx];
+  msq[idx] = (rho)*msq[idx] + (1-rho)*temp*temp;
+  if(temp == 0.0f)
     return;
-  d_out[idx] = d_in[idx];
-  if(d_z[idx]<=0)
-    d_out[idx] *= slope;
+  value_type temp2 = (temp)/(1.0*sqrt((1-rho)*temp*temp));
+  value_type deltaX = -1.0*alpha*temp2;
+  grad[idx]=deltaX;
+  //value_type deltaX = -1.0*((1.0*sqrt(msqGrad[idx]+eps))*temp)/(1.0*sqrt(msq[idx] + eps));
+  //msqGrad[idx] = (rho)*msqGrad[idx] + (1-rho)*deltaX*deltaX;
+  //if(d_in[idx] > 100.0f || abs(deltaX) > 100.0f)
+  //printf("%f %f %f\n", deltaX, temp2, eps);
+  d_in[idx] += deltaX;
 }
 
-void Network::createHandles() {
-  checkCUDNN(cudnnCreate(&cudnnHandle));
-  checkCUDNN(cudnnCreateTensorDescriptor(&srcTensorDesc));
-  checkCUDNN(cudnnCreateTensorDescriptor(&dstTensorDesc));
-  checkCUDNN(cudnnCreateTensorDescriptor(&biasTensorDesc));
-  checkCUDNN(cudnnCreateTensorDescriptor(&dataGradTensorDesc));
-  checkCUDNN(cudnnCreateTensorDescriptor(&diffTensorDesc));
-  checkCUDNN(cudnnCreateFilterDescriptor(&filterDesc));
-  checkCUDNN(cudnnCreateFilterDescriptor(&filterGradDesc));
-  checkCUDNN(cudnnCreateConvolutionDescriptor(&convDesc));
-  checkCudaErrors(cublasCreate(&cublasHandle));
+Layer::Layer(int inputs_, int outputs_, int kernelDim_, int stride_, value_type iRangeD_, value_type iRangeB_, int actType_, int lType_) {
+  inputs = inputs_;
+  outputs = outputs_;
+  kernelDim = kernelDim_;
+  stride = stride_;
+  iRangeD = iRangeD_;
+  iRangeB = iRangeB_;
+  actType = actType_;
+  lType = lType_;
 }
+Layer::~Layer() {
+  delete[] h_data;
+  delete[] h_bias;
+  checkCudaErrors(cudaFree(d_data));
+  checkCudaErrors(cudaFree(d_bias));
+  checkCudaErrors(cudaFree(d_msq));
+  checkCudaErrors(cudaFree(d_grad));
+  checkCudaErrors(cudaFree(d_grad_bias));
+  checkCudaErrors(cudaFree(d_msq_bias));
+  checkCudaErrors(cudaFree(d_msq_grad_bias));
+  checkCudaErrors(cudaFree(d_msq_grad_data));
+  checkCudaErrors(cudaFree(d_hist_data));
+  checkCudaErrors(cudaFree(d_hist_bias));
 
-void Network::destroyHandles() {
-  checkCUDNN(cudnnDestroyConvolutionDescriptor(convDesc));
-    checkCUDNN(cudnnDestroyFilterDescriptor(filterDesc));
-    checkCUDNN(cudnnDestroyFilterDescriptor(filterGradDesc));
-    checkCUDNN(cudnnDestroyTensorDescriptor(srcTensorDesc));
-    checkCUDNN(cudnnDestroyTensorDescriptor(dstTensorDesc));
-    checkCUDNN(cudnnDestroyTensorDescriptor(biasTensorDesc));
-    checkCUDNN(cudnnDestroyTensorDescriptor(dataGradTensorDesc));
-    checkCUDNN(cudnnDestroyTensorDescriptor(diffTensorDesc));
-    checkCUDNN(cudnnDestroy(cudnnHandle));
-    checkCudaErrors(cublasDestroy(cublasHandle));
 }
-
-
-Network::Network() {
-  dataType = CUDNN_DATA_FLOAT;
-  tensorFormat = CUDNN_TENSOR_NCHW;
-  createHandles();
-}
-
-Network::~Network() {
-  destroyHandles();
-}
-void Network::resize(int size, value_type **data) {
-    if(*data != NULL)
-    {
-        checkCudaErrors(cudaFree(*data));
-    }
-    checkCudaErrors(cudaMalloc(data, size*sizeof(value_type)));
-}
-void Network::addBias(const cudnnTensorDescriptor_t& dstTensorDesc, const Layer& layer, int n, int c, int h, int w, value_type *data) {
-    checkCUDNN(cudnnSetTensor4dDescriptor(biasTensorDesc,
-                                            tensorFormat,
-                                            dataType,
-                                            n, c,
-                                            h,
-                                            w));
-    value_type alpha = value_type(1);
-    value_type beta  = value_type(1);
-    checkCUDNN(cudnnAddTensor(cudnnHandle, CUDNN_ADD_SAME_C,
-                                  &alpha, biasTensorDesc,
-                                  layer.d_bias,
-                                  &beta,
-                                  dstTensorDesc,
-                                  data));
-}
-void Network::fullyConnectedForward(const Layer& ip,
-                          int& n, int& c, int& h, int& w,
-                          value_type* srcData, value_type** dstData, bool biasAdd) {
-    int dim_x = c*h*w;
-    int dim_y = ip.outputs;
-    
-
-    value_type alpha = value_type(1), beta = value_type(0);
-    // place bias into dstData
-    //if(biasAdd)
-      //checkCudaErrors(cudaMemcpy(*dstData, ip.d_bias, dim_y*sizeof(value_type), cudaMemcpyDeviceToDevice));
-    
-    checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T,
-                                  n, dim_y, dim_x,
-                                  &alpha,
-                                  srcData, n,
-                                  ip.d_data, dim_y,
-                                  &beta,
-                                  *dstData, n));
-    beta = value_type(1);
-
-    int size = n;
-    value_type *bias_multiplier;
-    int sizeInBytes = size*sizeof(value_type);
-    value_type *h_dt_ = new value_type[size];
-    checkCudaErrors(cudaMalloc((void**)&bias_multiplier, sizeInBytes));
-    for(int i = 0; i < size; ++i) {
-      h_dt_[i] = value_type(1);
-    }
-    checkCudaErrors(cudaMemcpyHTD(bias_multiplier, h_dt_, sizeInBytes));
-    delete[] h_dt_;
-
-    if(biasAdd)
-       checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
-                                  n, dim_y, 1,
-                                  &alpha,
-                                  bias_multiplier, n,
-                                  ip.d_bias, 1,
-                                  &beta,
-                                  *dstData, n));
-    h = 1; w = 1; c = dim_y;
-    checkCudaErrors(cudaFree(bias_multiplier));
-}
-void Network::convoluteForward(const Layer& conv,
-                  int& n, int& c, int& h, int& w,
-                  value_type* srcData, value_type** dstData, bool biasAdd) {
-    cudnnConvolutionFwdAlgo_t algo;
-
-    checkCUDNN(cudnnSetTensor4dDescriptor(srcTensorDesc,
-                                            tensorFormat,
-                                            dataType,
-                                            n, c,
-                                            h, w));
-
-    checkCUDNN(cudnnSetFilter4dDescriptor(filterDesc,
-                                          dataType,
-                                          conv.outputs,
-                                          conv.inputs, 
-                                          conv.kernelDim,
-                                          conv.kernelDim));
-
-    checkCUDNN(cudnnSetConvolution2dDescriptor(convDesc,
-                                                0,0, // padding
-                                                conv.stride,conv.stride, // stride
-                                                1,1, // upscale
-                                                CUDNN_CROSS_CORRELATION));  //OR CUDNN_CONVOLUTION
-    // find dimension of convolution output
-    checkCUDNN(cudnnGetConvolution2dForwardOutputDim(convDesc,
-                                            srcTensorDesc,
-                                            filterDesc,
-                                            &n, &c, &h, &w));
-
-    //if fully connected layer
-    if(conv.lType == 0) {
-      resize(n*c*h*w, dstData);
-      fullyConnectedForward(conv, n, c, h, w, srcData, dstData, biasAdd);
-      return;
-    }
-
-    checkCUDNN(cudnnSetTensor4dDescriptor(dstTensorDesc,
-                                            tensorFormat,
-                                            dataType,
-                                            n, c,
-                                            h,
-                                            w));
-    checkCUDNN(cudnnGetConvolutionForwardAlgorithm(cudnnHandle,
-                                            srcTensorDesc,
-                                            filterDesc,
-                                            convDesc,
-                                            dstTensorDesc,
-                                            CUDNN_CONVOLUTION_FWD_PREFER_FASTEST,
-                                            0,
-                                            &algo
-                                            ));
-
-    resize(n*c*h*w, dstData);
-    size_t sizeInBytes=0;
-    void* workSpace=NULL;
-    checkCUDNN(cudnnGetConvolutionForwardWorkspaceSize(cudnnHandle,
-                                            srcTensorDesc,
-                                            filterDesc,
-                                            convDesc,
-                                            dstTensorDesc,
-                                            algo,
-                                            &sizeInBytes));
-    if (sizeInBytes!=0)
-    {
-      checkCudaErrors(cudaMalloc(&workSpace,sizeInBytes));
-    }
-    value_type alpha = value_type(1);
-    value_type beta  = value_type(0);
-    checkCUDNN( cudnnConvolutionForward(cudnnHandle,
-                                          &alpha,
-                                          srcTensorDesc,
-                                          srcData,
-                                          filterDesc,
-                                          conv.d_data,
-                                          convDesc,
-                                          algo,
-                                          workSpace,
-                                          sizeInBytes,
-                                          &beta,
-                                          dstTensorDesc,
-                                          *dstData) );
-    if(biasAdd)
-      addBias(dstTensorDesc, conv, 1, c, 1, 1, *dstData);
-    if (sizeInBytes!=0)
-    {
-      checkCudaErrors(cudaFree(workSpace));
-    }
-}
-void Network::activationForward(int n, int c, int h, int w, value_type* srcData, value_type** dstData)
-{
-    resize(n*c*h*w, dstData);
-    checkCUDNN(cudnnSetTensor4dDescriptor(srcTensorDesc,
-                                            tensorFormat,
-                                            dataType,
-                                            n, c,
-                                            h,
-                                            w));
-    checkCUDNN(cudnnSetTensor4dDescriptor(dstTensorDesc,
-                                            tensorFormat,
-                                            dataType,
-                                            n, c,
-                                            h,
-                                            w));
-    value_type alpha = value_type(1);
-    value_type beta  = value_type(0);
-    checkCUDNN(cudnnActivationForward(cudnnHandle,
-                                        CUDNN_ACTIVATION_RELU,
-                                        &alpha,
-                                        srcTensorDesc,
-                                        srcData,
-                                        &beta,
-                                        dstTensorDesc,
-                                        *dstData));    
-}
-void Network::activationForwardLeakyRELU(int n, int c, int h, int w, value_type* srcData, value_type** dstData, value_type slope) {
-  resize(n*c*h*w, dstData);
-  dim3 threadsPerBlock(BLOCKSIZE);
-  dim3 numBlocks((n*c*h*w-1)/threadsPerBlock.x + 1);
-  leakyReluActivateForward<<<numBlocks, threadsPerBlock>>>(srcData, *dstData, n*c*h*w, slope);
-}
-void Network::convoluteBacwardData(const Layer& conv,
-                      int& nI, int& cI, int& hI, int& wI,
-                      value_type* diffData,
-                      int& nO, int& cO, int& hO, int& wO,
-                      value_type** gradData) {
-  if(conv.lType == 0) {
-    fullyConnectedBacwardData(conv, nI, cI, hI, wI, diffData, nO, cO, hO, wO, gradData);
-    return;
-  }
-  resize(nO*cO*hO*wO, gradData);
-  checkCUDNN(cudnnSetTensor4dDescriptor(diffTensorDesc,
-                                            tensorFormat,
-                                            dataType,
-                                            nI, cI,
-                                            hI, wI));
-  checkCUDNN(cudnnSetTensor4dDescriptor(dataGradTensorDesc,
-                                            tensorFormat,
-                                            dataType,
-                                            nO, cO,
-                                            hO, wO));
-   checkCUDNN(cudnnSetFilter4dDescriptor(filterDesc,
-                                          dataType,
-                                          conv.outputs,
-                                          conv.inputs, 
-                                          conv.kernelDim,
-                                          conv.kernelDim));
-
-    checkCUDNN(cudnnSetConvolution2dDescriptor(convDesc,
-                                                0,0, // padding
-                                                conv.stride,conv.stride, // stride
-                                                1,1, // upscale
-                                                CUDNN_CROSS_CORRELATION));  //OR CUDNN_CONVOLUTION
-    value_type alpha = value_type(1);
-    value_type beta  = value_type(0);
-    checkCUDNN(cudnnConvolutionBackwardData(cudnnHandle,
-                        &alpha,
-                        filterDesc,
-                        conv.d_data,
-                        diffTensorDesc,
-                        diffData,
-                        convDesc,
-                        &beta,
-                        dataGradTensorDesc,
-                        *gradData));
-    nI = nO;
-    cI = cO;
-    hI = hO;
-    wI = wO;
-}
-void Network::convoluteBacwardFilter(const Layer& conv,
-                      int& nI, int& cI, int& hI, int& wI,
-                      value_type* srcData,
-                      int& nO, int& cO, int& hO, int& wO,
-                      value_type* diffData, value_type**gradData) {
-  if(conv.lType == 0) {
-    fullyConnectedBacwardFilter(conv, nI, cI, hI, wI, srcData, nO, cO, hO, wO, diffData, gradData);
-    return;
-  }
-  checkCUDNN(cudnnSetTensor4dDescriptor(srcTensorDesc,
-                                            tensorFormat,
-                                            dataType,
-                                            nI, cI,
-                                            hI, wI));
-  checkCUDNN(cudnnSetTensor4dDescriptor(diffTensorDesc,
-                                            tensorFormat,
-                                            dataType,
-                                            nO, cO,
-                                            hO, wO));
-   checkCUDNN(cudnnSetFilter4dDescriptor(filterGradDesc,
-                                          dataType,
-                                          conv.outputs,
-                                          conv.inputs, 
-                                          conv.kernelDim,
-                                          conv.kernelDim));
-
-    checkCUDNN(cudnnSetConvolution2dDescriptor(convDesc,
-                                                0,0, // padding
-                                                conv.stride,conv.stride, // stride
-                                                1,1, // upscale
-                                                CUDNN_CROSS_CORRELATION));  //OR CUDNN_CONVOLUTION
-    value_type alpha = value_type(1);
-    value_type beta  = value_type(1); //accumulate filter gradients
-    checkCUDNN(cudnnConvolutionBackwardFilter(cudnnHandle,
-                        &alpha,
-                        srcTensorDesc,
-                        srcData,
-                        diffTensorDesc,
-                        diffData,
-                        convDesc,
-                        &beta,
-                        filterGradDesc,
-                        *gradData));
-}
-void Network::activationBackward(int& n, int& c, int& h, int& w,
-                      value_type* srcData,
-                      value_type* diffData, value_type* dstData, value_type**gradData) {
-
-  resize(n*c*h*w, gradData);
-  checkCUDNN(cudnnSetTensor4dDescriptor(srcTensorDesc,
-                                            tensorFormat,
-                                            dataType,
-                                            n, c,
-                                            h, w));
-  checkCUDNN(cudnnSetTensor4dDescriptor(diffTensorDesc,
-                                            tensorFormat,
-                                            dataType,
-                                            n, c,
-                                            h, w));
-  checkCUDNN(cudnnSetTensor4dDescriptor(dstTensorDesc,
-                                            tensorFormat,
-                                            dataType,
-                                            n, c,
-                                            h, w));
-  checkCUDNN(cudnnSetTensor4dDescriptor(dataGradTensorDesc,
-                                            tensorFormat,
-                                            dataType,
-                                            n, c,
-                                            h, w));
-
-    value_type alpha = value_type(1);
-    value_type beta  = value_type(0);
-    checkCUDNN(cudnnActivationBackward(cudnnHandle,
-                        CUDNN_ACTIVATION_RELU,
-                        &alpha,
-                        srcTensorDesc,
-                        srcData,
-                        diffTensorDesc,
-                        diffData,
-                        dstTensorDesc,
-                        dstData,
-                        &beta,
-                        dataGradTensorDesc,
-                        *gradData));
-}
-
-void Network::activationBackwardLeakyRELU(int& n, int& c, int& h, int& w,
-                      value_type* srcData,
-                      value_type* diffData, value_type* dstData, value_type**gradData, value_type slope) {
-  resize(n*c*h*w, gradData);
-  dim3 threadsPerBlock(BLOCKSIZE);
-  dim3 numBlocks((n*c*h*w-1)/threadsPerBlock.x + 1);
-  leakyReluActivateBackward<<<numBlocks, threadsPerBlock>>>(diffData, *gradData, srcData, n*c*h*w, slope);
-}
-
-void Network::convoluteBackwardBias(const Layer& conv, int& n, int& c, int& h, int& w,
-                      value_type* srcData, value_type**gradData) {
-  if(conv.lType == 0) {
-    fullyConnectedBackwardBias(conv, n, c, h, w, srcData, gradData);
-    return;
-  }
-  //resize(1*c*1*1, gradData);
-  checkCUDNN(cudnnSetTensor4dDescriptor(srcTensorDesc,
-                                            tensorFormat,
-                                            dataType,
-                                            n, c,
-                                            h, w));
-  checkCUDNN(cudnnSetTensor4dDescriptor(biasTensorDesc,
-                                            tensorFormat,
-                                            dataType,
-                                            1, c,
-                                            1, 1));
-  value_type alpha = value_type(1);
-  value_type beta  = value_type(1); //accumulate beta gradients
-  checkCUDNN(cudnnConvolutionBackwardBias(cudnnHandle,
-                                          &alpha,
-                                          srcTensorDesc,
-                                          srcData,
-                                          &beta,
-                                          biasTensorDesc,
-                                          *gradData));
-}
-
-void Network::fullyConnectedBacwardData(const Layer& ip,
-                      int& nI, int& cI, int& hI, int& wI,
-                      value_type* diffData,
-                      int& nO, int& cO, int& hO, int& wO,
-                      value_type** gradData) {
-  resize(nO*cO*hO*wO, gradData);
-  int dim_x = cO*hO*wO;
-  int dim_y = ip.outputs;
-  value_type alpha = value_type(1), beta = value_type(0);
-  /*
-  checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
-                                nO, dim_x, dim_y,
-                                &alpha,
-                                diffData, nI,
-                                ip.d_data, dim_y,
-                                &beta,
-                                *gradData, nO));
-  */
-  
-  checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T,
-                                nO, dim_x, dim_y,
-                                &alpha,
-                                diffData, nI,
-                                ip.d_data, dim_x,
-                                &beta,
-                                *gradData, nO));
-  
-  nI = nO;
-  cI = cO;
-  hI = hO;
-  wI = wO;
-}
-void Network::fullyConnectedBacwardFilter(const Layer& ip,
-                      int& nI, int& cI, int& hI, int& wI,
-                      value_type* srcData,
-                      int& nO, int& cO, int& hO, int& wO,
-                      value_type* diffData, value_type**gradData) {
-  int dim_x = cI*hI*wI;
-  int dim_y = ip.outputs;
-  value_type alpha = value_type(1), beta = value_type(0); 
-  /*
-  checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
-                                dim_y, dim_x, nI,
-                                &alpha,
-                                diffData, nO,
-                                srcData, nI,
-                                &beta,
-                                *gradData, dim_y));
-  */
-  
-  checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
-                                dim_x, dim_y, nI,
-                                &alpha,
-                                srcData, nI,
-                                diffData, nO,
-                                &beta,
-                                *gradData, dim_x));
-                               
-}
-void Network::fullyConnectedBackwardBias(const Layer& ip, int& n, int& c, int& h, int& w,
-                      value_type* srcData, value_type**gradData) {
-  //resize(1*c*1*1, gradData);
-  int dim_y = ip.outputs;
-  value_type alpha = value_type(1), beta = value_type(0);
-
-  int size = n;
-  value_type *bias_multiplier;
+void Layer::randInit(value_type **h_dt, value_type **d_dt, int size, value_type irange, bool isFixedInit) {
   int sizeInBytes = size*sizeof(value_type);
-  value_type *h_dt_ = new value_type[size];
-  checkCudaErrors(cudaMalloc((void**)&bias_multiplier, sizeInBytes));
+  *h_dt = new value_type[size];
+  checkCudaErrors(cudaMalloc(d_dt, sizeInBytes));
   for(int i = 0; i < size; ++i) {
-    h_dt_[i] = value_type(1);
+    if(isFixedInit) {
+      (*h_dt)[i] = value_type(irange);
+    } else {
+      (*h_dt)[i] = value_type(rand_normal(0, 1)*irange);
+    }
   }
-  checkCudaErrors(cudaMemcpyHTD(bias_multiplier, h_dt_, sizeInBytes));
-  delete[] h_dt_;
+  checkCudaErrors(cudaMemcpyHTD(*d_dt, *h_dt, sizeInBytes));
+}
+void Layer::initData() {
+  randInit(&h_data, &d_data, inputs*outputs*kernelDim*kernelDim, iRangeD, 0);
+}
+void Layer::initBias() {
+  randInit(&h_bias, &d_bias, outputs, iRangeB, 1);
+}
+void Layer::initMsq() {
+  int size = inputs*outputs*kernelDim*kernelDim;
+  int sizeInBytes = size*sizeof(value_type);
+  checkCudaErrors(cudaMalloc(&d_msq, sizeInBytes));
+}
+void Layer::initMsqBias() {
+  int size = outputs;
+  int sizeInBytes = size*sizeof(value_type);
+  checkCudaErrors(cudaMalloc(&d_msq_bias, sizeInBytes));
+}
+void Layer::initGradMsq() {
+  int size = inputs*outputs*kernelDim*kernelDim;
+  int sizeInBytes = size*sizeof(value_type);
+  checkCudaErrors(cudaMalloc(&d_msq_grad_data, sizeInBytes));
+}
+void Layer::initGradMsqBias() {
+  int size = outputs;
+  int sizeInBytes = size*sizeof(value_type);
+  checkCudaErrors(cudaMalloc(&d_msq_grad_bias, sizeInBytes));
+}
+void Layer::initGrad() {
+  int size = inputs*outputs*kernelDim*kernelDim;
+  int sizeInBytes = size*sizeof(value_type);
+  checkCudaErrors(cudaMalloc(&d_grad, sizeInBytes));
+}
 
-  checkCudaErrors(cublasSgemv(cublasHandle, CUBLAS_OP_T,
-                                      n, dim_y,
-                                      &alpha,
-                                      srcData, n,
-                                      bias_multiplier, 1,
-                                      &beta,
-                                      *gradData, 1));
+void Layer::initGradBias() {
+  int size = outputs;
+  int sizeInBytes = size*sizeof(value_type);
+  checkCudaErrors(cudaMalloc(&d_grad_bias, sizeInBytes));
+}
+
+void Layer::initHistData() {
+  int size = inputs*outputs*kernelDim*kernelDim;
+  checkCudaErrors(cudaMalloc(&d_hist_data, size*sizeof(value_type)));
+  checkCudaErrors(cudaMemcpyDTD(d_hist_data, d_data, size*sizeof(value_type)));
+}
+
+void Layer::initHistBias() {
+  int size = outputs;
+  checkCudaErrors(cudaMalloc(&d_hist_bias, size*sizeof(value_type)));
+  checkCudaErrors(cudaMemcpyDTD(d_hist_bias, d_bias, size*sizeof(value_type)));
+}
+
+void Layer::init() {
+  initData();
+  initHistData();
+  initBias();
+  initHistBias();
+  initMsq();
+  initGrad();
+  initGradBias();
+  resetMsq();
+  resetGrad();
+  resetGradBias();
+  initMsqBias();
+  resetMsqBias();
+  initGradMsq();
+  initGradMsqBias();
+  resetMsqGrad();
+  resetMsqGradBias();
+}
+void Layer::resetMsq() {
+  int size = inputs*outputs*kernelDim*kernelDim;
+  int sizeInBytes = size*sizeof(value_type);
+  checkCudaErrors(cudaMemset(d_msq, 0.0f, sizeInBytes));
+}
+void Layer::resetMsqBias() {
+  int size = outputs;
+  int sizeInBytes = size*sizeof(value_type);
+  checkCudaErrors(cudaMemset(d_msq_bias, 0.0f, sizeInBytes));
+}
+void Layer::resetMsqGrad() {
+  int size = inputs*outputs*kernelDim*kernelDim;
+  int sizeInBytes = size*sizeof(value_type);
+  checkCudaErrors(cudaMemset(d_msq_grad_data, 0.0f, sizeInBytes));
+}
+void Layer::resetMsqGradBias() {
+  int size = outputs;
+  int sizeInBytes = size*sizeof(value_type);
+  checkCudaErrors(cudaMemset(d_msq_grad_bias, 0.0f, sizeInBytes));
+}
+void Layer::resetGrad() {
+  int size = inputs*outputs*kernelDim*kernelDim;
+  int sizeInBytes = size*sizeof(value_type);
+  checkCudaErrors(cudaMemset(d_grad, 0.0f, sizeInBytes));
+}
+void Layer::resetGradBias() {
+  int size = outputs;
+  int sizeInBytes = size*sizeof(value_type);
+  checkCudaErrors(cudaMemset(d_grad_bias, 0.0f, sizeInBytes));
+}
+void Layer::update(value_type alpha, value_type gamma, int batchSize, bool biasUpdate) {
+  int size = inputs*outputs*kernelDim*kernelDim;
+  dim3 threadsPerBlock(BLOCKSIZE);
+  dim3 numBlocks((size-1)/threadsPerBlock.x + 1);
+  updateGen<<<numBlocks, threadsPerBlock>>>(d_data, d_grad, d_msq, d_msq_grad_data, alpha, gamma, size, batchSize, 0.000001f);
+  size = outputs;
+  dim3 numBlocks2((size-1)/threadsPerBlock.x + 1);
+  if(biasUpdate)
+    updateGen<<<numBlocks2, threadsPerBlock>>>(d_bias, d_grad_bias, d_msq_bias, d_msq_grad_bias, alpha, gamma, size, batchSize, 0.000001f);
+  sync_gpu<<<1,1>>>();
+}
 
 
-  checkCudaErrors(cudaFree(bias_multiplier));
+void Layer::copyDataDTH() {
+  int size = inputs*outputs*kernelDim*kernelDim;
+  checkCudaErrors(cudaMemcpyDTH(h_data, d_data, size*sizeof(value_type)));
+  size = outputs;
+  checkCudaErrors(cudaMemcpyDTH(h_bias, d_bias, size*sizeof(value_type)));
+}
+
+void Layer::copyDataDTDH() {
+  int size = inputs*outputs*kernelDim*kernelDim;
+  checkCudaErrors(cudaMemcpyDTD(d_hist_data, d_data, size*sizeof(value_type)));
+  size = outputs;
+  checkCudaErrors(cudaMemcpyDTD(d_hist_bias, d_bias, size*sizeof(value_type)));
+}
+
+void Layer::copyDataDHTD() {
+  int size = inputs*outputs*kernelDim*kernelDim;
+  checkCudaErrors(cudaMemcpyDTD(d_data, d_hist_data, size*sizeof(value_type)));
+  size = outputs;
+  checkCudaErrors(cudaMemcpyDTD(d_bias, d_hist_bias, size*sizeof(value_type)));
+}
+
+void Layer::adaDelta(float rate, float wtDecay, std:string regType, ) {
+  if(wtDecay) {
+    if(regType == "L2") {
+    
+    } else if(regType == "L1") {
+    
+    }
+  }
+
+}
+
+void Layer::rmsProp() {
+
+}
+
+void Layer::rProp() {
+
 }

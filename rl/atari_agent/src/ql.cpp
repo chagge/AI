@@ -20,9 +20,7 @@ QL::QL(Info x) {
 	epsilonDecay = info.epsilonDecay;
 
 	interface = new Interface(info);
-	//cnn = new CNN(x);
 	miniBatch = new int[miniBatchSize];
-	//grayScrnHist = new std::array<FrameDataSp, 1>[maxHistoryLen];
 	
 	virtNumTransSaved = 0;
 	lastHistInd = 0;
@@ -30,74 +28,41 @@ QL::QL(Info x) {
 
 	//garbage vals
 	isRandom = false;
-	google::InitGoogleLogging("atari");
-  google::InstallFailureSignalHandler();
-  google::LogToStderr();
-	caffe::Caffe::set_mode(caffe::Caffe::GPU);
-	caff = new CAFF();
-	caff->Initialize("dqn_solver.prototxt");
-
-	//fMapSize = cnn->getInputFMSize();
-	fMapSize = 84*84;	//hardcoded
+	fMapSize = kCroppedFrameDataSize;
 	cnnInputSize = fMapSize * miniBatchSize * numFrmStack;
-	//inputToCNN = new float[cnnInputSize];
+
+	google::InitGoogleLogging(info.argv0.c_str());
+	google::InstallFailureSignalHandler();
+	google::LogToStderr();
+	caffe::Caffe::set_mode(caffe::Caffe::GPU);
+	caff = new CAFF(x);
+	caff->Initialize(info.solverPath);
 }
 
 QL::~QL() {
 	delete[] miniBatch;
 	delete interface;
 	ind2Act.clear();
-	//delete[] grayScrnHist;
-	//delete[] inputToCNN;
-	//delete cnn;
 	dExp.clear();
-	if(info.debugQL) {
-		qlLog.close();
-		qlLog2.close();
-	}
 }
 
 void QL::run() {
 	init();
 
-	if(info.debugQL)
-		printParamInfo();
-
 	while(!gameOver()) {
 
 		double score = playAnEpisode(info.toTrain);
-		if(info.debugQL) {
-			qlLog << "Train: EP No. " << interface->getCurEpNum() << " and score: " << score /*<< " WF No. " << cnn->getCurWFNum()*/ << std::endl;
-			qlLog2 << "Train: EP No. " << interface->getCurEpNum() << " and score: " << score /*<< " WF No. " << cnn->getCurWFNum()*/ << std::endl;
-			//qlLog2 << "Num steps Connet: " << cnn->getNumSteps() << " Learning rate: " << cnn->getLR() << std::endl;
-		}
 		if((interface->getCurEpNum())%info.testAfterEveryNumEp == 0 && info.toTrain) {
 			score = playAnEpisode(false);	//tests in training
-			if(info.debugQL) {
-				qlLog << "Test: EP No. " << interface->getCurEpNum() << " and score: " << score << std::endl;
-				//qlLog2 << "Test: EP No. " << interface->getCurEpNum() << " and score: " << score << " WF No. " << cnn->getCurWFNum() << std::endl;
-			}
 		}
-		std::cout << interface->getCurEpNum() << " score: " << score << std::endl;
+		std::cout << "Frame: " << interface->getCurFrameNum() << " Ep: " <<  interface->getCurEpNum() << " score: " << score << std::endl;
 	}
-
 	finalize();
 }
 
 void QL::init() {
-	//init pipes
-	interface->openPipe();
-	interface->initInPipe();
-	interface->initOutPipe();
-	
-	//init input to CNN
+	interface->init();
 	resetInputToCNN();
-
-	//open file if info.debugQL is on
-	if(info.debugQL) {
-		qlLog.open(info.qlLogFile.c_str());
-		qlLog2.open(info.qlLogFile2.c_str());
-	}
 }
 
 bool QL::gameOver() {
@@ -107,15 +72,8 @@ bool QL::gameOver() {
 double QL::playAnEpisode(bool toTrain) {
 	double epScore = 0;
 	int ftime = 1;
-	int frameNum = 0;
-
-	if(info.debugQL)
-		qlLog << "Episode No.: " << interface->getCurEpNum() << std::endl;
 
 	while(!gameOver() && !interface->isTerminal()) {
-		if(info.debugQL)
-			qlLog << "Frame No.: " << frameNum << std::endl;
-
 		if(ftime == 1) {
 			ftime = 0;
 			epScore += initSeq();
@@ -131,9 +89,6 @@ double QL::playAnEpisode(bool toTrain) {
 			}
 		}
 
-		if(info.debugQL)
-			qlLog << "Action Chosen: " << toAct << (isRandom?" (Random)":" (Decisive)") << " got Reward: " << reward << std::endl;
-
 		if(toTrain) {
 			History history = {(maxHistoryLen+lastHistInd-2)%maxHistoryLen, 
 								reward, 
@@ -141,17 +96,11 @@ double QL::playAnEpisode(bool toTrain) {
 								interface->isTerminal(), 
 								(maxHistoryLen+lastHistInd-1)%maxHistoryLen};
 			saveHistory(history);
-			if(info.debugQL) {
-				qlLog << "prev Hist Ind: " << history.fiJ << std::endl;
-				qlLog << "is Terminal: " << history.isTerm << std::endl;
-				qlLog << "new Hist Ind: " << history.fiJN << std::endl;
-			}
 			if(dExp.size() > info.memThreshold) {
 				getAMiniBatch();
 				learnWts();
 			}
 		}
-		frameNum++;
 	}
 	interface->resetVals(1);
 	return epScore;
@@ -167,10 +116,7 @@ double QL::initSeq() {
 }
 
 double QL::playAction(int x) {
-	interface->writeInPipe(toString(x));
-	interface->readFromPipe();
-	interface->saveFrameInfo();
-	return interface->getCurRew();
+	return interface->act(x);
 }
 
 void QL::saveGrayScrn() {
@@ -179,7 +125,6 @@ void QL::saveGrayScrn() {
 	} else {
 		grayScrnHist.push_back(interface->getGrayScrn());
 	}
-	//grayScrnHist[lastHistInd%maxHistoryLen] = interface->getGrayScrn();
 	lastHistInd = (lastHistInd+1)%maxHistoryLen;
 }
 
@@ -203,8 +148,7 @@ int QL::chooseAction(bool toTrain) {
 
 int QL::getArgMaxQ() {
 	resetInputToCNN();
-	setInputToCNN((maxHistoryLen+lastHistInd-1)%maxHistoryLen, 0);
-	//int maxQInd = cnn->chooseAction(inputToCNN, numAction);
+	setInputToCNN((maxHistoryLen+lastHistInd-1)%maxHistoryLen, 0);	
 	int maxQInd = caff->chooseAction(inputToCNN, numAction);
 	return maxQInd;
 }
@@ -214,8 +158,7 @@ double QL::repeatLastAction(int toAct, int numTimes, bool toTrain) {
 	for(int i = 0; i < numTimes && !gameOver(); ++i) {
 		lastScore += playAction(toAct);
 	}
-	if(toTrain)
-		saveGrayScrn();
+	saveGrayScrn();
 	return lastScore;
 }
 
@@ -238,41 +181,22 @@ void QL::learnWts() {
 	for(int i = 0; i < miniBatchSize; ++i) {
 		setInputToCNN(dExp[miniBatch[i]].fiJN, i);
 	}
-	//float *qVals = cnn->forwardNGetQVal(inputToCNN);
-	float *qVals = caff->forwardNGetQVal(inputToCNN);
-	if(info.debugQL) {
-		qlLog << "Learn iter no.: " << numTimeLearnt << std::endl;
-		qlLog << "Predicted QVals: " << std::endl;
-		//printInfile(qlLog, qVals, miniBatchSize*numAction);
-		qlLog << "Action and Rewards in miniBatch: " << std::endl;
-		for(int i = 0; i < miniBatchSize; ++i) {
-			qlLog << dExp[miniBatch[i]].act << "<==>" << dExp[miniBatch[i]].reward << ", ";
-		}
-		qlLog << std::endl;
-		if(numTimeLearnt < 1) {
-			std::ofstream myF("inputToCNNB.txt");
-			//printHostVectorInFile(cnnInputSize, inputToCNN, myF, "\n");
-			myF.close();
-		}
+	if(numTimeLearnt < 1) {
+		std::ofstream myF("inputToCNN.txt");
+		printInfile(cnnInputSize, inputToCNN, myF);
+		myF.close();
 	}
+
+	float *qVals = caff->forwardNGetQVal(inputToCNN);
 
 	TargetLayerInputData targ;
 	std::fill(targ.begin(), targ.end(), 0.0f);
 	FilterLayerInputData filterInp;
 	std::fill(filterInp.begin(), filterInp.end(), 0.0f);
-	//memset(targ, 0, miniBatchSize*numAction*sizeof(float));
-	//memset(filterInp, 0, miniBatchSize*numAction*sizeof(float));
 	prepareTarget(targ, qVals);
 
 	for(int i = 0; i < miniBatchSize; ++i) {
 		filterInp[i*numAction + dExp[miniBatch[i]].act] = 1;
-	}
-
-
-
-	if(info.debugQL) {
-		qlLog << "Target was: " << std::endl;
-		//printInfile(qlLog, targ, miniBatchSize*numAction);
 	}
 
 	resetInputToCNN();
@@ -280,39 +204,19 @@ void QL::learnWts() {
 		setInputToCNN(dExp[miniBatch[i]].fiJ, i);
 	}
 
-	//TAKE A STEP
 	int maxLIter = info.numLearnSteps;
-	//cnn->learn(inputToCNN, targ, maxLIter);
 	caff->learn(inputToCNN, targ, filterInp, maxLIter);
 
-	if(info.debugQL) {
-		qlLog << "New predicted QVals: " << std::endl;
-		//printInfile(qlLog, cnn->forwardNGetQVal(inputToCNN), miniBatchSize*numAction);
-		if(numTimeLearnt < 1) {
-			std::ofstream myF("inputToCNNA.txt");
-			//printHostVectorInFile(cnnInputSize, inputToCNN, myF, "\n");
-			myF.close();
-		}
-	}
-
 	numTimeLearnt++;
-	//if(numTimeLearnt%info.saveWtTimePer==0)
-		//cnn->saveFilterWts();
 }
 
 void QL::resetInputToCNN() {
-	//memset(inputToCNN, 0, cnnInputSize*sizeof(float));
 	std::fill(inputToCNN.begin(), inputToCNN.end(), 0.0f);
 }
 
 void QL::setInputToCNN(int lst, int imgInd) {
 	int i = 0, cnt = (maxHistoryLen + lst - (numFrmStack-1))%maxHistoryLen;
 	while(i < numFrmStack) {
-		/*
-		for(int j = 0; j < fMapSize; ++j) {
-			inputToCNN[imgInd*fMapSize*numFrmStack+i*fMapSize+j] = (1.0*grayScrnHist[cnt][j]);
-		}
-		*/
 		const auto& frame_data = grayScrnHist[cnt][0];
 		std::copy(frame_data->begin(), frame_data->end(), inputToCNN.begin()+imgInd*fMapSize*numFrmStack+i*fMapSize);
 		i++;
@@ -324,7 +228,6 @@ void QL::printInfile(int sz, FramesLayerInputData val , std::ofstream& myF) {
 	for(int i = 0; i < sz; ++i) {
 		myF << val[i] << "\n";
 	}
-	myF << std::endl;
 	myF << std::endl;
 }
 
@@ -349,17 +252,17 @@ void QL::prepareTarget(TargetLayerInputData& targ, float *qVals) {
 }
 
 void QL::finalize() {
-	interface->finalizePipe();
+	interface->finalize();
 }
 
 void QL::printParamInfo() {
-	qlLog << "Number of Actions: " << numAction << std::endl;
-	qlLog << "Size of frame stack: " << numFrmStack << std::endl;
-	qlLog << "Max History Length: " << maxHistoryLen << std::endl;
-	qlLog << "Epsilon Decay: " << epsilonDecay << std::endl;
-	qlLog << "Minibatch size: " << miniBatchSize << std::endl;
-	qlLog << "Actions: " << std::endl;
+	std::cout << "Number of Actions: " << numAction << std::endl;
+	std::cout << "Size of frame stack: " << numFrmStack << std::endl;
+	std::cout << "Max History Length: " << maxHistoryLen << std::endl;
+	std::cout << "Epsilon Decay: " << epsilonDecay << std::endl;
+	std::cout << "Minibatch size: " << miniBatchSize << std::endl;
+	std::cout << "Actions: " << std::endl;
 	for(int i = 0; i < numAction; ++i) {
-		qlLog << "Action with index: " << i << " is: " << ind2Act[i] << std::endl;
+		std::cout << "Action with index: " << i << " is: " << ind2Act[i] << std::endl;
 	}
 }

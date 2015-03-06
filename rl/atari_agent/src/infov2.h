@@ -1,17 +1,9 @@
-//util.h
-#ifndef __UTIL_H__
-#define __UTIL_H__ 1
-
-#define UNDEF -3
-#define FAIL 0
-#define SUCCESS 1
+//info.h
+#ifndef __INFO_H__
+#define __INFO_H__
 
 #include <string>
-#include <sstream>
-#include <cstdio>
-#include <iostream>
-#include <fstream>
-#include <vector>
+#include <map>
 
 #include <boost/functional/hash.hpp>
 #include <boost/optional.hpp>
@@ -35,27 +27,50 @@ using FramesLayerInputData = std::array<float, kMinibatchDataSize>;
 using TargetLayerInputData = std::array<float, kMinibatchSize * kOutputCount>;
 using FilterLayerInputData = std::array<float, kMinibatchSize * kOutputCount>;
 
-#define ALE_HEIGHT 210
-#define ALE_WIDTH 160
+class Info {
+	public:
+		//interface
+		bool isAle;
+		int numAction;
+		std::map<int, int> ind2Act;
+		std::map<int, int> act2Ind;
+		int cropH, cropW, cropL, cropT, cropHV, cropWV;
+		std::string dataPath;
+		int maxNumFrame;
+		int numFrmStack;
+		//if ale true
+		bool isDispScrn;
+		std::string romPath;
+		//if ale false
+		std::string pathFifoIn;
+		std::string pathFifoOut;
+		int resetButton;
+		int numFrmReset;
 
-typedef float value_type;
 
-struct History{
-	int fiJ, reward, act, isTerm, fiJN;
+		//dqn
+		bool toTest;
+		std::string loadModel;
+		//declared above
+
+		//ql
+		int maxHistoryLen;
+		int miniBatchSize;
+		float epsilonDecay;
+		std::string solverPath;
+		std::string argv0;
+		bool toTrain;
+		int testAfterEveryNumEp;
+		int memThreshold;
+		float baseEpsilon;
+		int numLearnSteps;
+		float futDiscount;
+		int targetUpdateFreq;
+
+		//general
+
+		Info();
+		~Info();
 };
-
-struct LayerDim{
-	int x, y, z, w;
-};
-inline int toInt(std::string s) {int i;std::stringstream(s)>>i;return i;}
-inline std::string toString(int i) {std::string s;std::stringstream ss;ss<<i;ss>>s;return s;}
-
-char *inputString(FILE*, size_t);
-
-int hex2int(char, char);
-int ntsc2gray(char, char);
-double rand_normal(double, double);
-void printHostVector(int, value_type*);
-void printHostVectorInFile(int, value_type*, std::ofstream&, std::string);
 
 #endif

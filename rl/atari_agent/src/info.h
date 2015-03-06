@@ -20,7 +20,6 @@ class Info{
 		std::string qlLogFile, qlLogFile2;
 		float baseEpsilon;
 		int numLearnSteps;
-		int saveWtTimePer;
 		float futDiscount;
 
 		//for ql and interface
@@ -29,8 +28,10 @@ class Info{
 
 		//for nn
 		bool debugCNN;
-		bool isBias;
 		std::string cnnLogFile;
+
+		//general
+		bool isAle;
 
 		std::string nnConfig;	//input
 		std::string aleConfig;	//input

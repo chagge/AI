@@ -12,8 +12,8 @@ CAFF::~CAFF() {
   delete[] qVals;
 }
 
-CAFF::CAFF() {
-
+CAFF::CAFF(Info x) {
+  info = x;
 }
 
 void CAFF::Initialize(std::string solver_param_) {
@@ -33,6 +33,9 @@ void CAFF::Initialize(std::string solver_param_) {
   q_values_blob_ = net_->blob_by_name("q_values");
   std::fill(dummy_input_data_.begin(), dummy_input_data_.end(), 0.0); 
   qVals = new float[kOutputCount*kMinibatchSize];
+  if(info.toTest) {
+    loadModel(info.loadModel);
+  }
 }
 
 void CAFF::InputDataIntoLayers(
@@ -52,12 +55,11 @@ void CAFF::InputDataIntoLayers(
 
 int CAFF::chooseAction(FramesLayerInputData& frame_data, int numAction) {
   assert(numAction == kOutputCount);
-  //FramesLayerInputData frames_input;
-  //std::copy(frame_data, frame_data+kMinibatchDataSize,frames_input.begin());
   InputDataIntoLayers(frame_data, dummy_input_data_, dummy_input_data_);
   net_->ForwardPrefilled(nullptr);
   int maxIdx = 0;
   float maxQ;
+
   for(int i = 0; i < numAction; ++i) {
     float q =q_values_blob_->data_at(0, static_cast<int>(i), 0, 0);
     assert(!std::isnan(q));
@@ -73,8 +75,6 @@ int CAFF::chooseAction(FramesLayerInputData& frame_data, int numAction) {
 
 
 float *CAFF::forwardNGetQVal(FramesLayerInputData& frame_data) {
-  //FramesLayerInputData frames_input;
-  //std::copy(frame_data, frame_data+kMinibatchDataSize, frames_input.begin());
   InputDataIntoLayers(frame_data, dummy_input_data_, dummy_input_data_);
   net_->ForwardPrefilled(nullptr);
   memset(qVals, 0, kOutputCount*kMinibatchSize);
@@ -87,28 +87,10 @@ float *CAFF::forwardNGetQVal(FramesLayerInputData& frame_data) {
 }
 
 void CAFF::learn(FramesLayerInputData& frames_input, TargetLayerInputData& target_input, FilterLayerInputData& filter_input, int iter) {
-
-  //FramesLayerInputData frames_input;
-  /*std::copy(
-          frame_data,
-          frame_data+kMinibatchDataSize,
-          frames_input.begin());
-*/
-/*
-  TargetLayerInputData target_input;
-  std::copy(
-          target_data,
-          target_data+kMinibatchSize*kOutputCount,
-          target_input.begin());
-  */
-/*
-    FilterLayerInputData filter_input;
-    std::copy(
-          filter_data,
-          filter_data+kMinibatchSize*kOutputCount,
-          filter_input.begin());
-          */
-
   InputDataIntoLayers(frames_input, target_input, filter_input);
   solver_->Step(iter);
+}
+
+void CAFF::loadModel(std::string modelPath) {
+  net_->CopyTrainedLayersFrom(modelPath);
 }

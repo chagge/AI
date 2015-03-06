@@ -1,4 +1,4 @@
-//interface.cu
+//interface.cpp
 #include "interface.h"
 #include "info.h"
 #include "util.h"
@@ -11,37 +11,39 @@
 #include <cmath>
 #include <ale_interface.hpp>
 
+#define ALE_HEIGHT 210
+#define ALE_WIDTH 160
 
 Interface::Interface(Info info) {
 	dataPath = info.dataPath;
-	pathFifoIn = info.pathFifoIn;
-	pathFifoOut = info.pathFifoOut;
 	numAction = info.numAction;
-	maxNumFrame = info.maxNumFrame;
 	ind2Act = info.ind2Act;
 	act2Ind = info.act2Ind;
-	resetButton = info.resetButton;
-	numFrmReset = info.numFrmReset;
-	numFrmStack = info.numFrmStack;
 	cropH = info.cropH;
 	cropW = info.cropW;
 	cropL = info.cropL;
 	cropT = info.cropT;
 	cropHV = info.cropHV;
 	cropWV = info.cropWV;
-	ale = new ALEInterface(true);
-	ale->loadROM("../roms/breakout.bin");
-	/*
-	for(int i = 0; i < cropH; ++i) {
-		for(int j = 0; j < cropW; ++j) {
-			lastFrmGrayInfo[j+i*cropW] = 0;
-		}
-	}
-	*/
-
-	frmInfo = dataPath + "/frameInfo";
 	EpInfo = dataPath + "/epInfo";
+	maxNumFrame = info.maxNumFrame;
+	numFrmStack = info.numFrmStack;
+	isAle = info.isAle;
+	if(isAle) {
+		ale = new ALEInterface(info.isDispScrn);
+		ale->loadROM(info.romPath);
+	} else {
+		pathFifoIn = info.pathFifoIn;
+		pathFifoOut = info.pathFifoOut;
+		resetButton = info.resetButton;
+		numFrmReset = info.numFrmReset;
+		delim = ":,";
+		lastFrmInfo = "";
+		curFrmScreen = "";
+	}
 
+	lastEpEndFrmNum = 0;
+	minEpFrmGap = 50;
 	curFrmNum = 0;
 	curAct = UNDEF;
 	curIsTerm = 0;
@@ -50,28 +52,93 @@ Interface::Interface(Info info) {
 	curEpNetRew = 0;
 	netGameRew = 0;
 	curEpNumFrame = 0;
-	delim = ":,";
-	lastFrmInfo = "";
-	curFrmScreen = "";
-	lastEpEndFrmNum = 0;
-	minEpFrmGap = 50;
 }
 Interface::~Interface() {
+	if(isAle) {
+		delete ale;
+	} else {
+		pathFifoOut.clear();
+		pathFifoIn.clear();
+		lastFrmInfo.clear();
+		delim.clear();
+		curFrmScreen.clear();
+	}
 	dataPath.clear();
-	frmInfo.clear();
 	EpInfo.clear();
-	pathFifoOut.clear();
-	pathFifoIn.clear();
-	lastFrmInfo.clear();
-	delim.clear();
-	curFrmScreen.clear();
 	ind2Act.clear();
 	act2Ind.clear();
-	//lastFrmGrayInfo.clear();
 }
 
+void Interface::init() {
+	if(isAle) {
+		return;
+	} else {
+		openPipe();
+		initInPipe();
+		initOutPipe();
+	}
+}
+
+int Interface::act(int x) {
+	if(isAle) {
+		aleAct(x);
+	}else {
+		writeInPipe(toString(x));
+		readFromPipe();
+	}
+	decodeInfo();
+	if(isAle)
+		aleGetScreen();
+	else
+		preProFrmString();
+	return curRew;
+}
+
+int Interface::resetVals(int toSave) {
+	if(curIsTerm && (curFrmNum-lastEpEndFrmNum)>minEpFrmGap) {
+		if(toSave)
+			saveEpisodeInfo();
+		curEpNumFrame = 0;
+		curEpNetRew = 0;
+		curEpNum += 1;
+		curIsTerm = 0;
+		lastEpEndFrmNum = curFrmNum;
+
+		if(isAle) {
+			ale->reset_game();
+		}
+		else {
+			for(int i = 0; i < numFrmReset; ++i) {
+				resetInPipe();
+			}
+		}
+		return 1;
+	}
+	return 0;
+}
+
+void Interface::finalize() {
+	if(isAle) {
+		return;
+	} else {
+		finalizePipe();
+	}
+}
+
+int Interface::isTerminal() {
+	return curIsTerm;
+}
+
+InputFrames Interface::getGrayScrn(){
+	return lastFrmGrayInfo;
+}
+
+int Interface::getCurEpNum() {
+	return curEpNum;
+}
+
+
 int Interface::openPipe() {
-	return SUCCESS;
 	std::string cmdIn = "cat > " + pathFifoIn;
 	std::string cmdOut = "cat " + pathFifoOut;
 	if(!(infoIn = popen(cmdIn.c_str(), "w")) || !(infoOut = popen(cmdOut.c_str(), "r"))){
@@ -83,7 +150,6 @@ int Interface::openPipe() {
 }
 
 int Interface::initInPipe() {
-	return SUCCESS;
 	std::string x = "1,0,0,1\n";
 	unsigned int numWrite =  fwrite(x.c_str(), sizeof(char), x.length(), infoIn);
 	if(numWrite != x.length())
@@ -92,15 +158,13 @@ int Interface::initInPipe() {
 }
 
 void Interface::initOutPipe() {
-	return;
+	//garbage string
 	char *garbage = inputString(infoOut,10);
 	free(garbage);
 	garbage = NULL;
-	//garbage string
 }
 
 int Interface::resetInPipe() {
-	return SUCCESS;
 	std::string x = (toString(resetButton) + ",18\n");
 	unsigned int numWrite =  fwrite(x.c_str(), sizeof(char), x.length(), infoIn);
 	char *garbage = inputString(infoOut,10);	//garbage string
@@ -111,15 +175,16 @@ int Interface::resetInPipe() {
 	return SUCCESS;
 }
 
-void Interface::closePipes() {
-	return;
+void Interface::closePipes() {	
 	pclose(infoIn);
-	pclose(infoOut);
+	pclose(infoOut);	
+}
+
+void Interface::aleAct(int action) {
+	curRew = ale->act((Action)action);
 }
 
 int Interface::writeInPipe(std::string x) {
-	aleAct(atoi(x.c_str()));
-	return SUCCESS;
 	curAct = act2Ind[atoi(x.c_str())];
 	x += ",18\n";
 	unsigned int numWrite =  fwrite(x.c_str(), sizeof(char), x.length(), infoIn);
@@ -129,81 +194,52 @@ int Interface::writeInPipe(std::string x) {
 }
 
 void Interface::readFromPipe() {
-	aleGetScreen();
-	return;
 	lastFrmInfo.clear();
 	char *str = inputString(infoOut,ALE_WIDTH*ALE_HEIGHT*2);
 	lastFrmInfo.assign(str);
 	free(str);
 	str = NULL;
-	decodeInfo();
-}
-
-void Interface::finalizePipe() {
-	return;
-	while(1) {
-		std::string x = (toString(18) + ",18\n");
-		fwrite(x.c_str(), sizeof(char), x.length(), infoIn);
-		char *str = inputString(infoOut,10);
-		if(str[0] == 'D') {
-			free(str);
-			break;
-		}
-		free(str);
-	}
-	closePipes();
 }
 
 void Interface::decodeInfo() {
-	return;
+	if(isAle) {
+		curIsTerm = ale->game_over();
+	} else {
 	std::vector<int> v;
-	for(int i = lastFrmInfo.length()-1; i >= 0; --i) {
-		if(lastFrmInfo[i] == ':' || lastFrmInfo[i] == ',') {
-			v.push_back(i);
+		for(int i = lastFrmInfo.length()-1; i >= 0; --i) {
+			if(lastFrmInfo[i] == ':' || lastFrmInfo[i] == ',') {
+				v.push_back(i);
+			}
+			if(v.size() == 3)
+				break;
 		}
-		if(v.size() == 3)
-			break;
+		curFrmScreen = lastFrmInfo.substr(0, v[2]+1);
+		curIsTerm = atoi(lastFrmInfo.substr(v[2]+1, v[1]-v[2]-1).c_str());
+		curRew = atoi(lastFrmInfo.substr(v[1]+1, v[0]-v[1]-1).c_str());
 	}
-	curFrmScreen = lastFrmInfo.substr(0, v[2]+1);
-	curIsTerm = atoi(lastFrmInfo.substr(v[2]+1, v[1]-v[2]-1).c_str());
-	curRew = atoi(lastFrmInfo.substr(v[1]+1, v[0]-v[1]-1).c_str());
 	curFrmNum += 1;
 	curEpNumFrame +=1;
 	curEpNetRew += curRew;
 	netGameRew += curRew;
 }
 
-int Interface::resetVals(int toSave) {
-	if(curIsTerm && (curFrmNum-lastEpEndFrmNum)>minEpFrmGap) {
-		if(toSave)
-			saveEpisodeInfo();
-		curEpNumFrame = 0;
-		curEpNetRew = 0;
-		curEpNum += 1;
-		for(int i = 0; i < numFrmReset; ++i)
-			resetInPipe();
-		curIsTerm = 0;
-		lastEpEndFrmNum = curFrmNum;
-		ale->reset_game();
-		return 1;
+void Interface::finalizePipe() {
+	if(isAle) {
+		return;
+	} else {
+		while(1) {
+			std::string x = (toString(18) + ",18\n");
+			fwrite(x.c_str(), sizeof(char), x.length(), infoIn);
+			char *str = inputString(infoOut,10);
+			if(str[0] == 'D') {
+				free(str);
+				break;
+			}
+			free(str);
+		}
+		closePipes();
+		return;
 	}
-	return 0;
-}
-
-int Interface::isTerminal() {
-	return curIsTerm;
-}
-
-int Interface::getCurFrmCnt() {
-	return curFrmNum;
-}
-
-int Interface::getCurRew() {
-	return curRew;
-}
-
-int Interface::getCurAct() {
-	return curAct;
 }
 
 bool Interface::isToEnd() {
@@ -217,41 +253,40 @@ int Interface::getCurFrameNum() {
 }
 
 int PixelToGrayscale(pixel_t pixel) {
-
-int ntsc2rgb[] = {
-	0x000000, 0, 0x4a4a4a, 0, 0x6f6f6f, 0, 0x8e8e8e, 0,
-	0xaaaaaa, 0, 0xc0c0c0, 0, 0xd6d6d6, 0, 0xececec, 0,
-	0x484800, 0, 0x69690f, 0, 0x86861d, 0, 0xa2a22a, 0,
-	0xbbbb35, 0, 0xd2d240, 0, 0xe8e84a, 0, 0xfcfc54, 0,
-	0x7c2c00, 0, 0x904811, 0, 0xa26221, 0, 0xb47a30, 0,
-	0xc3903d, 0, 0xd2a44a, 0, 0xdfb755, 0, 0xecc860, 0,
-	0x901c00, 0, 0xa33915, 0, 0xb55328, 0, 0xc66c3a, 0,
-	0xd5824a, 0, 0xe39759, 0, 0xf0aa67, 0, 0xfcbc74, 0,
-	0x940000, 0, 0xa71a1a, 0, 0xb83232, 0, 0xc84848, 0,
-	0xd65c5c, 0, 0xe46f6f, 0, 0xf08080, 0, 0xfc9090, 0,
-	0x840064, 0, 0x97197a, 0, 0xa8308f, 0, 0xb846a2, 0,
-	0xc659b3, 0, 0xd46cc3, 0, 0xe07cd2, 0, 0xec8ce0, 0,
-	0x500084, 0, 0x68199a, 0, 0x7d30ad, 0, 0x9246c0, 0,
-	0xa459d0, 0, 0xb56ce0, 0, 0xc57cee, 0, 0xd48cfc, 0,
-	0x140090, 0, 0x331aa3, 0, 0x4e32b5, 0, 0x6848c6, 0,
-	0x7f5cd5, 0, 0x956fe3, 0, 0xa980f0, 0, 0xbc90fc, 0,
-	0x000094, 0, 0x181aa7, 0, 0x2d32b8, 0, 0x4248c8, 0,
-	0x545cd6, 0, 0x656fe4, 0, 0x7580f0, 0, 0x8490fc, 0,
-	0x001c88, 0, 0x183b9d, 0, 0x2d57b0, 0, 0x4272c2, 0,
-	0x548ad2, 0, 0x65a0e1, 0, 0x75b5ef, 0, 0x84c8fc, 0,
-	0x003064, 0, 0x185080, 0, 0x2d6d98, 0, 0x4288b0, 0,
-	0x54a0c5, 0, 0x65b7d9, 0, 0x75cceb, 0, 0x84e0fc, 0,
-	0x004030, 0, 0x18624e, 0, 0x2d8169, 0, 0x429e82, 0,
-	0x54b899, 0, 0x65d1ae, 0, 0x75e7c2, 0, 0x84fcd4, 0,
-	0x004400, 0, 0x1a661a, 0, 0x328432, 0, 0x48a048, 0,
-	0x5cba5c, 0, 0x6fd26f, 0, 0x80e880, 0, 0x90fc90, 0,
-	0x143c00, 0, 0x355f18, 0, 0x527e2d, 0, 0x6e9c42, 0,
-	0x87b754, 0, 0x9ed065, 0, 0xb4e775, 0, 0xc8fc84, 0,
-	0x303800, 0, 0x505916, 0, 0x6d762b, 0, 0x88923e, 0,
-	0xa0ab4f, 0, 0xb7c25f, 0, 0xccd86e, 0, 0xe0ec7c, 0,
-	0x482c00, 0, 0x694d14, 0, 0x866a26, 0, 0xa28638, 0,
-	0xbb9f47, 0, 0xd2b656, 0, 0xe8cc63, 0, 0xfce070, 0
-};
+	int ntsc2rgb[] = {
+		0x000000, 0, 0x4a4a4a, 0, 0x6f6f6f, 0, 0x8e8e8e, 0,
+		0xaaaaaa, 0, 0xc0c0c0, 0, 0xd6d6d6, 0, 0xececec, 0,
+		0x484800, 0, 0x69690f, 0, 0x86861d, 0, 0xa2a22a, 0,
+		0xbbbb35, 0, 0xd2d240, 0, 0xe8e84a, 0, 0xfcfc54, 0,
+		0x7c2c00, 0, 0x904811, 0, 0xa26221, 0, 0xb47a30, 0,
+		0xc3903d, 0, 0xd2a44a, 0, 0xdfb755, 0, 0xecc860, 0,
+		0x901c00, 0, 0xa33915, 0, 0xb55328, 0, 0xc66c3a, 0,
+		0xd5824a, 0, 0xe39759, 0, 0xf0aa67, 0, 0xfcbc74, 0,
+		0x940000, 0, 0xa71a1a, 0, 0xb83232, 0, 0xc84848, 0,
+		0xd65c5c, 0, 0xe46f6f, 0, 0xf08080, 0, 0xfc9090, 0,
+		0x840064, 0, 0x97197a, 0, 0xa8308f, 0, 0xb846a2, 0,
+		0xc659b3, 0, 0xd46cc3, 0, 0xe07cd2, 0, 0xec8ce0, 0,
+		0x500084, 0, 0x68199a, 0, 0x7d30ad, 0, 0x9246c0, 0,
+		0xa459d0, 0, 0xb56ce0, 0, 0xc57cee, 0, 0xd48cfc, 0,
+		0x140090, 0, 0x331aa3, 0, 0x4e32b5, 0, 0x6848c6, 0,
+		0x7f5cd5, 0, 0x956fe3, 0, 0xa980f0, 0, 0xbc90fc, 0,
+		0x000094, 0, 0x181aa7, 0, 0x2d32b8, 0, 0x4248c8, 0,
+		0x545cd6, 0, 0x656fe4, 0, 0x7580f0, 0, 0x8490fc, 0,
+		0x001c88, 0, 0x183b9d, 0, 0x2d57b0, 0, 0x4272c2, 0,
+		0x548ad2, 0, 0x65a0e1, 0, 0x75b5ef, 0, 0x84c8fc, 0,
+		0x003064, 0, 0x185080, 0, 0x2d6d98, 0, 0x4288b0, 0,
+		0x54a0c5, 0, 0x65b7d9, 0, 0x75cceb, 0, 0x84e0fc, 0,
+		0x004030, 0, 0x18624e, 0, 0x2d8169, 0, 0x429e82, 0,
+		0x54b899, 0, 0x65d1ae, 0, 0x75e7c2, 0, 0x84fcd4, 0,
+		0x004400, 0, 0x1a661a, 0, 0x328432, 0, 0x48a048, 0,
+		0x5cba5c, 0, 0x6fd26f, 0, 0x80e880, 0, 0x90fc90, 0,
+		0x143c00, 0, 0x355f18, 0, 0x527e2d, 0, 0x6e9c42, 0,
+		0x87b754, 0, 0x9ed065, 0, 0xb4e775, 0, 0xc8fc84, 0,
+		0x303800, 0, 0x505916, 0, 0x6d762b, 0, 0x88923e, 0,
+		0xa0ab4f, 0, 0xb7c25f, 0, 0xccd86e, 0, 0xe0ec7c, 0,
+		0x482c00, 0, 0x694d14, 0, 0x866a26, 0, 0xa28638, 0,
+		0xbb9f47, 0, 0xd2b656, 0, 0xe8cc63, 0, 0xfce070, 0
+	};
 	int rgb = ntsc2rgb[pixel];
   	int r = rgb >> 16;
 	int g = (rgb >> 8) & 0xFF;
@@ -260,7 +295,6 @@ int ntsc2rgb[] = {
 }
 
 void Interface::preProFrmString() {
-	return;
 	auto screen = std::make_shared<FrameData>();
 	double yRatio = (1.0*(ALE_HEIGHT))/(1.0*cropHV);
 	double xRatio = (1.0*(ALE_WIDTH))/(1.0*cropWV);
@@ -288,18 +322,15 @@ void Interface::preProFrmString() {
 					resColor += (xRatioInResPixel/xRatio)*(yRatioInResPixel/yRatio)*grayscale;
 				}
 			}
-			//myFrmFile << resColor << " ";
 			if(i >= cropT && i < (cropT + cropH) && j >= cropL && j < (cropL + cropW))
 				(*screen)[j-cropL+(i-cropT)*cropW] = resColor;
 		}
-		//myFrmFile << std::endl;
 	}
 	lastFrmGrayInfo[0] = screen;
 }
 
 void Interface::aleGetScreen() {
 	const auto raw_pixels = ale->getScreen().getArray();
-
 	auto screen = std::make_shared<FrameData>();
 	double yRatio = (1.0*(ALE_HEIGHT))/(1.0*cropHV);
 	double xRatio = (1.0*(ALE_WIDTH))/(1.0*cropWV);
@@ -327,42 +358,16 @@ void Interface::aleGetScreen() {
 					resColor += (xRatioInResPixel/xRatio)*(yRatioInResPixel/yRatio)*grayscale;
 				}
 			}
-			//myFrmFile << resColor << " ";
 			if(i >= cropT && i < (cropT + cropH) && j >= cropL && j < (cropL + cropW))
 				(*screen)[j-cropL+(i-cropT)*cropW] = resColor;
 		}
-		//myFrmFile << std::endl;
 	}
 	lastFrmGrayInfo[0] = screen;
 }
 
-void Interface::aleAct(int action) {
-	curIsTerm = ale->game_over();
-	curRew = ale->act((Action)action);
-	curFrmNum += 1;
-	curEpNumFrame +=1;
-	curEpNetRew += curRew;
-	netGameRew += curRew;
-}
 
-InputFrames Interface::getGrayScrn(){
-	return lastFrmGrayInfo;
-}
 
-void Interface::saveFrameInfo() {
-	return;
-	//no need to save frame info
-	//std::string path = frmInfo + toString(curFrmNum);
-	//std::ofstream myFrmFile(path.c_str());
-	//myFrmFile << curFrmScreen << std::endl;
-	preProFrmString();
-	//myFrmFile << ind2Act[curAct] << std::endl;
-	//myFrmFile << curRew << std::endl;
-	//myFrmFile << curIsTerm << std::endl;
-	//myFrmFile << curFrmNum << std::endl;
-	//myFrmFile << curEpNum << std::endl;
-	//myFrmFile.close();
-}
+
 
 void Interface::saveEpisodeInfo() {
 	std::string path = EpInfo + toString(curEpNum);
@@ -373,6 +378,11 @@ void Interface::saveEpisodeInfo() {
 	myFrmFile.close();
 }
 
+/*
+Depricated
+.
+.
+.
 void Interface::test() {
 	std::cout << "Testing Interface Class START!..." << std::endl;
 	std::cout << "TData Path: " << dataPath << std::endl;
@@ -410,7 +420,8 @@ void Interface::test() {
 	finalizePipe();
 	std::cout << "Testing Interface Class END!..." << std::endl;
 }
-
-int Interface::getCurEpNum() {
-	return curEpNum;
-}
+.
+.
+.
+.
+*/

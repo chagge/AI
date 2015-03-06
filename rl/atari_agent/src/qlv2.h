@@ -22,7 +22,6 @@ class QL {
 		std::map<int, int> ind2Act;
 		std::deque<History> dExp;	//transitions
 		std::deque<InputFrames> grayScrnHist;
-		//CNN *cnn;
 		int lastHistInd;
 		int epsilonDecay;
 		int maxHistoryLen;
@@ -34,9 +33,9 @@ class QL {
 		int cnnInputSize;
 		int fMapSize;
 		bool isRandom;
-		std::ofstream qlLog;
-		std::ofstream qlLog2;
 		CAFF *caff;
+		CAFF *caff2;
+		int targetUpdate;
 	public:
 		QL(Info x);
 		~QL();

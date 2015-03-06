@@ -22,8 +22,6 @@ class Interface {
 		int netGameRew;
 		int curEpNumFrame;
 		int numAction;
-		int resetButton;
-		int numFrmReset;
 		int lastEpEndFrmNum;
 		int minEpFrmGap;
 		int numFrmStack;
@@ -33,23 +31,42 @@ class Interface {
 		int cropW;
 		int cropL;
 		int cropT;
-		std::vector<int> lastFrmGrayInfo;
+		InputFrames lastFrmGrayInfo;
+		std::map<int, int> ind2Act;
+		std::map<int, int> act2Ind;
+		std::string dataPath;
+		std::string EpInfo;
+		bool isAle;
+		//info.isAle true
+		ALEInterface *ale;
+		//info.isAle false
+		int resetButton;
+		int numFrmReset;
 		std::string delim;
 		std::string curFrmScreen;
-		std::string dataPath;
-		std::string frmInfo;
-		std::string EpInfo;
 		std::string pathFifoIn;
 		std::string pathFifoOut;
 		std::string lastFrmInfo;
-		std::map<int, int> ind2Act;
-		std::map<int, int> act2Ind;
 		FILE *infoIn;
 		FILE *infoOut;
-		ALEInterface *ale;
 	public:
 		Interface(Info);
 		~Interface();
+		void init();
+		int act(int);
+		int resetVals(int);
+		int isTerminal();
+		bool isToEnd();
+		void decodeInfo();
+		int getCurFrameNum();
+		void saveEpisodeInfo();
+		void finalize();
+		InputFrames getGrayScrn();
+		int getCurEpNum();
+		//info.isAle true
+		void aleGetScreen();
+		void aleAct(int action);
+		//info.isAle false
 		int openPipe();
 		int initInPipe();
 		int resetInPipe();
@@ -58,20 +75,8 @@ class Interface {
 		int writeInPipe(std::string);
 		void readFromPipe();
 		void finalizePipe();
-		void decodeInfo();
-		int resetVals(int);
-		int isTerminal();
-		bool isToEnd();
-		int getCurFrameNum();
-		void saveFrameInfo();
-		void saveEpisodeInfo();
-		void test();
-		int getCurFrmCnt();
-		int getCurRew();
-		int getCurAct();
 		void preProFrmString();
-		std::vector<int> getGrayScrn();
-		int getCurEpNum();
+		//void test();
 };
 
 #endif

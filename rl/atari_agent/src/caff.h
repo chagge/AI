@@ -11,6 +11,7 @@
 #include <array>
 #include <cassert>
 #include "util.h"
+#include "info.h"
 
 class CAFF {
   private:
@@ -27,14 +28,16 @@ class CAFF {
     MemoryDataLayerSp filter_input_layer_;
     TargetLayerInputData dummy_input_data_;
     float *qVals;
+    Info info;
   public:
-    CAFF();
+    CAFF(Info);
     ~CAFF();
     void Initialize(std::string solver_param);
     void InputDataIntoLayers(const FramesLayerInputData&, const TargetLayerInputData&, const FilterLayerInputData&) ;
     int chooseAction(FramesLayerInputData&, int);
     float *forwardNGetQVal(FramesLayerInputData&);
     void learn(FramesLayerInputData&, TargetLayerInputData&, FilterLayerInputData&, int);
+    void loadModel(std::string);
 };
 
 #endif
